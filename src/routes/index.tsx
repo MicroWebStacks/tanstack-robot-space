@@ -5,6 +5,8 @@ import type { RobotStatus } from '../lib/robotStatus'
 import {
   DEFAULT_STATUS_STALE_MS,
   DRIVER_TARGET_HZ,
+  LIDAR_TARGET_HZ,
+  ODOM_TARGET_HZ,
   SLAM_TARGET_HZ,
   VOLTAGE_MAX_V,
   VOLTAGE_MIN_V,
@@ -187,6 +189,8 @@ function RobotDashboard() {
   const voltageText = voltageV == null ? '--' : `${voltageV.toFixed(1)}V`
 
   const driverHz = status?.rates?.hz_driver?.hz ?? null
+  const odomHz = status?.rates?.hz_odom?.hz ?? null
+  const lidarHz = status?.rates?.hz_lidar?.hz ?? null
   const slamHz = status?.rates?.hz_slam?.hz ?? null
 
   return (
@@ -220,6 +224,8 @@ function RobotDashboard() {
             <div className="text-sm text-slate-200">Pipeline Hz</div>
             <div className="mt-4 space-y-5">
               <RateBar label="driver" hz={driverHz} targetHz={DRIVER_TARGET_HZ} />
+              <RateBar label="odom" hz={odomHz} targetHz={ODOM_TARGET_HZ} />
+              <RateBar label="lidar" hz={lidarHz} targetHz={LIDAR_TARGET_HZ} />
               <RateBar label="slam" hz={slamHz} targetHz={SLAM_TARGET_HZ} />
             </div>
           </div>

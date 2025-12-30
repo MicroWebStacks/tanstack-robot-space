@@ -9,7 +9,7 @@ The gRPC server is a ROS node running within this project workspace https://gith
 Prereqs:
 - Node `>= 22.12`
 - `pnpm`
-- `rovi_ui_gateway` gRPC server listening on `0.0.0.0:50051`
+- `UiBridge` gRPC server listening on `0.0.0.0:50051` (client connects to `127.0.0.1:50051` by default)
 
 Run:
 
@@ -28,7 +28,7 @@ The browser never connects to gRPC directly. Nitro (Node) subscribes to the gRPC
 
 ```mermaid
 flowchart LR
-  GRPC[gRPC UiGateway<br/>0.0.0.0:50051] -->|GetStatus stream| HUB[Nitro server<br/>src/server/robotStatusHub.ts]
+  GRPC[gRPC UiBridge<br/>0.0.0.0:50051] -->|GetStatus stream| HUB[Nitro server<br/>src/server/robotStatusHub.ts]
   HUB -->|"GET /api/status (JSON)"| UI[React UI<br/>src/routes/index.tsx]
   HUB -->|"GET /api/status/stream (SSE)"| UI
 ```
@@ -37,7 +37,7 @@ flowchart LR
 sequenceDiagram
   participant UI as Browser UI
   participant API as Nitro API routes
-  participant GRPC as UiGateway (gRPC)
+  participant GRPC as UiBridge (gRPC)
 
   API->>GRPC: GetStatus({})
   GRPC-->>API: StatusUpdate (stream)

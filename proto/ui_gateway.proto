@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package rovi.ui_gateway.v1;
+package roblibs.ui_bridge.v1;
 
-service UiGateway {
+service UiBridge {
   // Streams periodic status snapshots at a globally-configured cadence.
   rpc GetStatus(StatusRequest) returns (stream StatusUpdate);
 }
@@ -10,6 +10,8 @@ service UiGateway {
 message StatusRequest {}
 
 message RateMetric {
+  // Stable identifier for this rate metric; clients should treat it as a key.
+  // Example ids (default config): "hz_driver", "hz_odom", "hz_lidar", "hz_slam".
   string id = 1;
   float hz = 2;
 

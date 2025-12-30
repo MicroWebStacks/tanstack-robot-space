@@ -12,6 +12,22 @@ import {
   DEFAULT_STATUS_STALE_MS,
 } from '../lib/robotStatus'
 
+const debugGrpc =
+  process.env.UI_GATEWAY_DEBUG === '1' ||
+  process.env.UI_GATEWAY_DEBUG === 'true'
+
+function debugLog(...args: unknown[]) {
+  if (!debugGrpc) return
+  // eslint-disable-next-line no-console
+  console.log('[ui-gateway]', ...args)
+}
+
+function debugError(...args: unknown[]) {
+  // Always log errors (even if debug is off).
+  // eslint-disable-next-line no-console
+  console.error('[ui-gateway]', ...args)
+}
+
 type RobotStatusListener = (status: RobotStatus | null) => void
 
 type RawRateMetric = {
@@ -146,50 +162,69 @@ function startGrpcLoop() {
     reconnectTimer = null
   }
 
-  const protoPath = resolveProtoPath()
-  const packageDef = protoLoader.loadSync(protoPath, {
-    keepCase: true,
-    longs: String,
-    enums: String,
-    defaults: false,
-    oneofs: true,
-  })
+  try {
+    const protoPath = resolveProtoPath()
+    debugLog('connecting', { grpcAddr, protoPath })
 
-  const proto = grpc.loadPackageDefinition(packageDef) as any
-  const UiGatewayClientCtor = proto?.rovi?.ui_gateway?.v1?.UiGateway as
-    | grpc.ServiceClientConstructor
-    | undefined
-  if (!UiGatewayClientCtor) {
-    throw new Error(
-      'Failed to load UiGateway from proto; expected rovi.ui_gateway.v1.UiGateway',
-    )
-  }
+    const packageDef = protoLoader.loadSync(protoPath, {
+      keepCase: true,
+      longs: String,
+      enums: String,
+      defaults: false,
+      oneofs: true,
+    })
 
-  const client = new UiGatewayClientCtor(
-    grpcAddr,
-    grpc.credentials.createInsecure(),
-  ) as any
-  activeClient = client as grpc.Client
+    const proto = grpc.loadPackageDefinition(packageDef) as any
+    const UiBridgeClientCtor = proto?.roblibs?.ui_bridge?.v1?.UiBridge as
+      | grpc.ServiceClientConstructor
+      | undefined
+    if (!UiBridgeClientCtor) {
+      throw new Error(
+        'Failed to load UiBridge from proto; expected roblibs.ui_bridge.v1.UiBridge',
+      )
+    }
 
-  const call = client.GetStatus({})
-  activeCall = call
+    const client = new UiBridgeClientCtor(
+      grpcAddr,
+      grpc.credentials.createInsecure(),
+    ) as any
+    activeClient = client as grpc.Client
 
-  call.on('data', (raw: RawStatusUpdate) => {
-    const normalized = normalizeStatusUpdate(raw)
-    if (!normalized) return
-    publish(normalized)
-    scheduleStaleClear()
-  })
+    const call = client.GetStatus({})
+    activeCall = call
 
-  const onDisconnect = () => {
+    call.on('data', (raw: RawStatusUpdate) => {
+      const normalized = normalizeStatusUpdate(raw)
+      if (!normalized) return
+      debugLog('status', {
+        seq: normalized.seq,
+        timestampUnixMs: normalized.timestampUnixMs,
+        rateIds: Object.keys(normalized.rates),
+      })
+      publish(normalized)
+      scheduleStaleClear()
+    })
+
+    const onDisconnect = (err?: unknown) => {
+      if (err) debugError('disconnected', err)
+      else debugLog('stream ended')
+
+      activeCall?.removeAllListeners()
+      activeCall = null
+
+      activeClient?.close()
+      activeClient = null
+      scheduleReconnect()
+    }
+
+    call.on('error', (err: unknown) => onDisconnect(err))
+    call.on('end', () => onDisconnect())
+  } catch (err) {
+    debugError('failed to start grpc loop', err)
     activeCall?.removeAllListeners()
     activeCall = null
-
     activeClient?.close()
     activeClient = null
     scheduleReconnect()
   }
-
-  call.on('error', onDisconnect)
-  call.on('end', onDisconnect)
 }
