@@ -17,6 +17,19 @@ function useIsModelRoute() {
   })
 }
 
+type ModelMetaResponse = {
+  meta: {
+    sha256: string
+    sizeBytes: number
+    wheelJointNames: string[]
+    odomFrame?: string
+    baseFrame?: string
+    mapFrame?: string
+  }
+  filename: string
+  url: string
+}
+
 export default function ModelViewerHost() {
   const isModelRoute = useIsModelRoute()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -24,6 +37,9 @@ export default function ModelViewerHost() {
   const [isClient, setIsClient] = useState(false)
   const [hasEverBeenActive, setHasEverBeenActive] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [modelMeta, setModelMeta] = useState<ModelMetaResponse | null>(null)
+  const [modelUrl, setModelUrl] = useState<string | null>(null)
+  const [metaError, setMetaError] = useState<string | null>(null)
 
   useEffect(() => {
     setIsClient(true)
@@ -57,6 +73,69 @@ export default function ModelViewerHost() {
     const container = containerRef.current
     if (container != null && document.fullscreenElement === container) {
       document.exitFullscreen().catch(() => {})
+    }
+  }, [isClient, isModelRoute])
+
+  useEffect(() => {
+    if (!isClient || !isModelRoute) return
+
+    const controller = new AbortController()
+    const prefetchModelFile = async (url: string) => {
+      console.log(
+        '[model] requesting partial model file to drive server logs/caching',
+        { url },
+      )
+      const res = await fetch(url, {
+        cache: 'force-cache',
+        headers: {
+          Range: 'bytes=0-1023',
+        },
+        signal: controller.signal,
+      })
+      console.log('[model] partial model response', res.status)
+      await res.arrayBuffer()
+      console.log('[model] partial model payload read', {
+        url,
+        status: res.status,
+      })
+    }
+
+    const fetchMeta = async () => {
+      console.log('[model] fetching metadata from /api/model/meta')
+      setMetaError(null)
+      try {
+        const res = await fetch('/api/model/meta', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        console.log('[model] metadata response status', res.status)
+        if (!res.ok) {
+          throw new Error(`Meta request failed with ${res.status}`)
+        }
+
+        const data = (await res.json()) as ModelMetaResponse
+        console.log('[model] metadata received', {
+          filename: data.filename,
+          url: data.url,
+        })
+        setModelMeta(data)
+        setModelUrl(data.url)
+        console.log('[model] model URL set', data.url)
+        prefetchModelFile(data.url).catch((err) => {
+          if (controller.signal.aborted) return
+          console.error('[model] partial file request failed', err)
+        })
+      } catch (err) {
+        if (controller.signal.aborted) return
+        console.error('[model] metadata fetch error', err)
+        setMetaError(String(err))
+      }
+    }
+
+    fetchMeta()
+
+    return () => {
+      controller.abort()
     }
   }, [isClient, isModelRoute])
 
@@ -109,8 +188,15 @@ export default function ModelViewerHost() {
           </div>
         }
       >
-        <ModelViewerCanvas active={isModelRoute} />
+        <ModelViewerCanvas active={isModelRoute} modelUrl={modelUrl} />
       </Suspense>
+      {(metaError || modelMeta) && (
+        <div className="pointer-events-none absolute left-4 bottom-4 rounded-lg bg-white/10 px-3 py-2 text-xs text-white shadow-xl backdrop-blur">
+          {metaError
+            ? `Model error: ${metaError}`
+            : `Model cached: ${modelMeta?.filename ?? 'loading…'}`}
+        </div>
+      )}
     </div>
   )
 }

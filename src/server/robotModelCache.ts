@@ -9,10 +9,19 @@ import * as protoLoader from '@grpc/proto-loader'
 
 import { DEFAULT_GRPC_ADDR } from '../lib/robotStatus'
 
+const LOG_PREFIX = '[robot-model-cache]'
 const MODEL_CACHE_DIR = path.resolve(process.cwd(), '.cache', 'models')
 const MODEL_PREFIX = 'robot-model-'
 const MODEL_EXT = '.glb'
 const HASH_PREFIX_LEN = 10
+
+function log(message: string, data?: unknown) {
+  if (data !== undefined) {
+    console.log(`${LOG_PREFIX} ${message}`, data)
+  } else {
+    console.log(`${LOG_PREFIX} ${message}`)
+  }
+}
 
 type RobotModelMeta = {
   sha256: string
@@ -106,13 +115,19 @@ function normalizeMeta(raw: any): RobotModelMeta {
 }
 
 async function fetchMeta(): Promise<RobotModelMeta> {
+  log('Fetching robot model metadata from grpc')
   const client = loadUiBridgeClient()
   return await new Promise<RobotModelMeta>((resolve, reject) => {
     client.GetRobotModelMeta({}, (err: grpc.ServiceError | null, res: any) => {
       client.close()
       if (err) return reject(err)
       try {
-        resolve(normalizeMeta(res))
+        const normalized = normalizeMeta(res)
+        log('Normalized metadata', {
+          sha256: normalized.sha256,
+          sizeBytes: normalized.sizeBytes,
+        })
+        resolve(normalized)
       } catch (e) {
         reject(e)
       }
@@ -153,6 +168,11 @@ async function downloadModel(meta: RobotModelMeta, filePath: string) {
   const client = loadUiBridgeClient()
   const call = client.GetRobotModel({})
 
+  log('Downloading model from grpc stream', {
+    tmpPath,
+    sizeBytes: meta.sizeBytes,
+    sha256: meta.sha256,
+  })
   const hash = crypto.createHash('sha256')
   const writeStream = fs.createWriteStream(tmpPath)
 
@@ -200,6 +220,7 @@ async function downloadModel(meta: RobotModelMeta, filePath: string) {
   }
 
   await fs.promises.rename(tmpPath, filePath)
+  log('Model download completed and cached', { filePath })
 }
 
 async function ensureModelCached(): Promise<CachedModel> {
@@ -211,14 +232,24 @@ async function ensureModelCached(): Promise<CachedModel> {
     const filename = `${MODEL_PREFIX}${hashPrefix}${MODEL_EXT}`
     const filePath = path.join(MODEL_CACHE_DIR, filename)
 
+    log('Ensuring cache for model', {
+      filename,
+      sha256: meta.sha256,
+      sizeBytes: meta.sizeBytes,
+    })
+
     const existingSize = await fileSize(filePath)
     if (existingSize === meta.sizeBytes) {
+      log('Cache hit, using existing model file', { filename, filePath })
       await deleteOtherModels(filename)
       return { meta, filename, filePath }
     }
 
+    log('Cache miss, downloading new model', { filename, filePath })
+
     await downloadModel(meta, filePath)
     await deleteOtherModels(filename)
+    log('Cache updated with new model', { filename, filePath })
     return { meta, filename, filePath }
   })()
 
@@ -234,6 +265,7 @@ export async function getRobotModelMeta(): Promise<{
   filename: string
   filePath: string
 }> {
+  log('Client requested robot model metadata')
   return await ensureModelCached()
 }
 
@@ -241,9 +273,18 @@ export async function serveRobotModelFile(
   filename: string,
   request: Request,
 ): Promise<Response> {
+  log('Serving model file request', {
+    filename,
+    url: request.url,
+    range: request.headers.get('range'),
+  })
   const { filePath, meta } = await ensureModelCached()
   const expected = `${MODEL_PREFIX}${meta.sha256.slice(0, HASH_PREFIX_LEN)}${MODEL_EXT}`
   if (filename !== expected) {
+    log('Requested filename mismatch', {
+      requested: filename,
+      expected,
+    })
     return new Response('Not found', { status: 404 })
   }
 
@@ -271,11 +312,18 @@ export async function serveRobotModelFile(
       end < start ||
       start >= size
     ) {
+      log('Invalid range requested', { start, end, size })
       return new Response('Requested Range Not Satisfiable', { status: 416 })
     }
 
     const nodeStream = fs.createReadStream(filePath, { start, end })
     const stream = Readable.toWeb(nodeStream) as unknown as ReadableStream
+    log('Returning partial content for model', {
+      start,
+      end,
+      size,
+      filename,
+    })
     return new Response(stream, {
       status: 206,
       headers: {
@@ -288,6 +336,7 @@ export async function serveRobotModelFile(
 
   const nodeStream = fs.createReadStream(filePath)
   const stream = Readable.toWeb(nodeStream) as unknown as ReadableStream
+  log('Returning full model content', { filename, size })
   return new Response(stream, {
     status: 200,
     headers: {

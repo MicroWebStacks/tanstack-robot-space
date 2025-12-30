@@ -1,6 +1,6 @@
-import { OrbitControls } from '@react-three/drei'
+import { OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 
 function InvalidateOnActive({ active }: { active: boolean }) {
   const invalidate = useThree((state) => state.invalidate)
@@ -13,7 +13,24 @@ function InvalidateOnActive({ active }: { active: boolean }) {
   return null
 }
 
-function Scene() {
+type RobotModelProps = {
+  url: string
+}
+
+function RobotModel({ url }: RobotModelProps) {
+  useGLTF.preload(url)
+  const gltf = useGLTF(url)
+
+  return (
+    <>
+      <primitive object={gltf.scene} dispose={null} />
+    </>
+  )
+}
+
+function Scene({ modelUrl }: { modelUrl: string | null }) {
+  const hasModel = Boolean(modelUrl)
+
   return (
     <>
       <color attach="background" args={['#0b1020']} />
@@ -25,15 +42,29 @@ function Scene() {
         <meshStandardMaterial color="#0f172a" />
       </mesh>
 
-      <mesh position={[0, 0.5, 0]} castShadow>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#60a5fa" />
-      </mesh>
+      {!hasModel && (
+        <mesh position={[0, 0.75, 0]} castShadow>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="#60a5fa" />
+        </mesh>
+      )}
+
+      {modelUrl ? (
+        <Suspense fallback={null}>
+          <RobotModel url={modelUrl} />
+        </Suspense>
+      ) : null}
     </>
   )
 }
 
-export default function ModelViewerCanvas({ active }: { active: boolean }) {
+export default function ModelViewerCanvas({
+  active,
+  modelUrl,
+}: {
+  active: boolean
+  modelUrl: string | null
+}) {
   return (
     <Canvas
       shadows
@@ -42,7 +73,7 @@ export default function ModelViewerCanvas({ active }: { active: boolean }) {
       style={{ width: '100%', height: '100%' }}
     >
       <InvalidateOnActive active={active} />
-      <Scene />
+      <Scene modelUrl={modelUrl} />
       <OrbitControls enabled={active} />
     </Canvas>
   )
