@@ -1,0 +1,110 @@
+import { useRouterState } from '@tanstack/react-router'
+import { Maximize2, Minimize2 } from 'lucide-react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
+
+const ModelViewerCanvas = lazy(() => import('./ModelViewerCanvas'))
+
+function useIsModelRoute() {
+  return useRouterState({
+    select: (state) => state.location.pathname === '/model',
+  })
+}
+
+export default function ModelViewerHost() {
+  const isModelRoute = useIsModelRoute()
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  const [isClient, setIsClient] = useState(false)
+  const [hasEverBeenActive, setHasEverBeenActive] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isModelRoute) return
+    setHasEverBeenActive(true)
+  }, [isModelRoute])
+
+  useEffect(() => {
+    if (!isClient) return
+
+    const onChange = () => {
+      setIsFullscreen(document.fullscreenElement === containerRef.current)
+    }
+
+    document.addEventListener('fullscreenchange', onChange)
+    onChange()
+
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [isClient])
+
+  useEffect(() => {
+    if (!isClient) return
+    if (isModelRoute) return
+
+    if (document.fullscreenElement === containerRef.current) {
+      document.exitFullscreen().catch(() => {})
+    }
+  }, [isClient, isModelRoute])
+
+  const toggleFullscreen = useCallback(async () => {
+    const container = containerRef.current
+    if (!container) return
+
+    try {
+      if (document.fullscreenElement === container) {
+        await document.exitFullscreen()
+      } else {
+        await container.requestFullscreen()
+      }
+    } catch {
+      // ignore fullscreen errors (blocked, user gesture missing, etc.)
+    }
+  }, [])
+
+  if (!isClient) return null
+  if (!hasEverBeenActive && !isModelRoute) return null
+
+  return (
+    <div
+      ref={containerRef}
+      className={[
+        'fixed left-0 right-0 bottom-0 z-40 bg-black',
+        isModelRoute ? '' : 'hidden',
+      ].join(' ')}
+      style={{ top: isFullscreen ? 0 : 'var(--app-header-height, 72px)' }}
+    >
+      <div className="absolute top-3 right-3 z-10">
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-black/30 backdrop-blur hover:bg-slate-900/90"
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+        >
+          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          {isFullscreen ? 'Exit' : 'Fullscreen'}
+        </button>
+      </div>
+
+      <Suspense
+        fallback={
+          <div className="flex h-full w-full items-center justify-center text-sm text-slate-300">
+            Loading viewer…
+          </div>
+        }
+      >
+        <ModelViewerCanvas active={isModelRoute} />
+      </Suspense>
+    </div>
+  )
+}
+
