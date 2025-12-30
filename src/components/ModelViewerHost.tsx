@@ -38,7 +38,10 @@ export default function ModelViewerHost() {
     if (!isClient) return
 
     const onChange = () => {
-      setIsFullscreen(document.fullscreenElement === containerRef.current)
+      const container = containerRef.current
+      setIsFullscreen(
+        container != null && document.fullscreenElement === container,
+      )
     }
 
     document.addEventListener('fullscreenchange', onChange)
@@ -51,7 +54,8 @@ export default function ModelViewerHost() {
     if (!isClient) return
     if (isModelRoute) return
 
-    if (document.fullscreenElement === containerRef.current) {
+    const container = containerRef.current
+    if (container != null && document.fullscreenElement === container) {
       document.exitFullscreen().catch(() => {})
     }
   }, [isClient, isModelRoute])
@@ -81,7 +85,10 @@ export default function ModelViewerHost() {
         'fixed left-0 right-0 bottom-0 z-40 bg-black',
         isModelRoute ? '' : 'hidden',
       ].join(' ')}
-      style={{ top: isFullscreen ? 0 : 'var(--app-header-height, 72px)' }}
+      style={{
+        top: isFullscreen ? 0 : 'var(--app-header-height, 72px)',
+        left: isFullscreen ? 0 : 'var(--app-sidebar-width, 0px)',
+      }}
     >
       <div className="absolute top-3 right-3 z-10">
         <button
@@ -107,4 +114,3 @@ export default function ModelViewerHost() {
     </div>
   )
 }
-

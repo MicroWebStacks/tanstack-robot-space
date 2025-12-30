@@ -1,3 +1,4 @@
+import { OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
 
@@ -42,7 +43,7 @@ export default function ModelViewerCanvas({ active }: { active: boolean }) {
     >
       <InvalidateOnActive active={active} />
       <Scene />
+      <OrbitControls enabled={active} />
     </Canvas>
   )
 }
-

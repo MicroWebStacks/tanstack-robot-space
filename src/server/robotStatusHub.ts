@@ -106,9 +106,18 @@ function scheduleReconnect() {
 }
 
 function resolveProtoPath() {
-  const fromCwd = path.resolve(process.cwd(), 'proto', 'ui_gateway.proto')
-  if (fs.existsSync(fromCwd)) return fromCwd
-  return fileURLToPath(new URL('../../proto/ui_gateway.proto', import.meta.url))
+  const candidates = [
+    path.resolve(process.cwd(), 'proto', 'ui_bridge.proto'),
+    path.resolve(process.cwd(), 'proto', 'ui_gateway.proto'),
+    fileURLToPath(new URL('../../proto/ui_bridge.proto', import.meta.url)),
+    fileURLToPath(new URL('../../proto/ui_gateway.proto', import.meta.url)),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+
+  throw new Error('Unable to locate ui_bridge.proto (or ui_gateway.proto fallback)')
 }
 
 function normalizeStatusUpdate(update: RawStatusUpdate): RobotStatus | null {
