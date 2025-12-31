@@ -1,10 +1,12 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
+import { useEffect } from 'react'
 
 import Header from '../components/Header'
 import ModelViewerHost from '../components/ModelViewerHost'
 import { RobotStatusProvider } from '../lib/robotStatusClient'
+import { ensureRobotModelReady } from '../lib/robotModelClient'
 
 import appCss from '../styles.css?url'
 
@@ -34,6 +36,13 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    // Start model meta + GLB prefetch once per page load.
+    ensureRobotModelReady().catch((err) => {
+      console.warn('[model] startup prefetch failed', err)
+    })
+  }, [])
+
   return (
     <html lang="en">
       <head>

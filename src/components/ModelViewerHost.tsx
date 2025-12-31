@@ -9,25 +9,15 @@ import {
   useState,
 } from 'react'
 
+import type { ModelMetaResponse } from '../lib/robotModelClient'
+import { ensureRobotModelReady, getCachedRobotModelMeta } from '../lib/robotModelClient'
+
 const ModelViewerCanvas = lazy(() => import('./ModelViewerCanvas'))
 
 function useIsModelRoute() {
   return useRouterState({
     select: (state) => state.location.pathname === '/model',
   })
-}
-
-type ModelMetaResponse = {
-  meta: {
-    coordinate_convention?: unknown
-    generator?: unknown
-    glb?: {
-      filename?: unknown
-    }
-    [k: string]: unknown
-  }
-  filename: string
-  url: string
 }
 
 export default function ModelViewerHost() {
@@ -77,78 +67,33 @@ export default function ModelViewerHost() {
   }, [isClient, isModelRoute])
 
   useEffect(() => {
-    if (!isClient || !isModelRoute) return
+    if (!isClient) return
 
-    const controller = new AbortController()
-    const prefetchModelFile = async (url: string) => {
-      console.log(
-        '[model] requesting partial model file to drive server logs/caching',
-        { url },
-      )
-      const res = await fetch(url, {
-        cache: 'force-cache',
-        headers: {
-          Range: 'bytes=0-1023',
-        },
-        signal: controller.signal,
-      })
-      console.log('[model] partial model response', res.status)
-      await res.arrayBuffer()
-      console.log('[model] partial model payload read', {
-        url,
-        status: res.status,
-      })
+    // Consume the startup singleton. No refetches on route swaps.
+    const cached = getCachedRobotModelMeta()
+    if (cached) {
+      setModelMeta(cached)
+      setModelUrl(cached.url)
+      return
     }
 
-    const fetchMeta = async () => {
-      console.log('[model] fetching metadata from /api/model/meta')
-      setMetaError(null)
-      try {
-        const res = await fetch('/api/model/meta', {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        console.log('[model] metadata response status', res.status)
-        if (!res.ok) {
-          let details: string | null = null
-          try {
-            const body = (await res.json()) as any
-            if (typeof body?.error === 'string') details = body.error
-          } catch {
-            // ignore parse failures
-          }
-          throw new Error(
-            details
-              ? `Meta request failed (${res.status}): ${details}`
-              : `Meta request failed with ${res.status}`,
-          )
-        }
-
-        const data = (await res.json()) as ModelMetaResponse
-        console.log('[model] metadata received', {
-          filename: data.filename,
-          url: data.url,
-        })
+    let cancelled = false
+    setMetaError(null)
+    ensureRobotModelReady()
+      .then((data) => {
+        if (cancelled) return
         setModelMeta(data)
         setModelUrl(data.url)
-        console.log('[model] model URL set', data.url)
-        prefetchModelFile(data.url).catch((err) => {
-          if (controller.signal.aborted) return
-          console.error('[model] partial file request failed', err)
-        })
-      } catch (err) {
-        if (controller.signal.aborted) return
-        console.error('[model] metadata fetch error', err)
+      })
+      .catch((err) => {
+        if (cancelled) return
         setMetaError(String(err))
-      }
-    }
-
-    fetchMeta()
+      })
 
     return () => {
-      controller.abort()
+      cancelled = true
     }
-  }, [isClient, isModelRoute])
+  }, [isClient])
 
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current
