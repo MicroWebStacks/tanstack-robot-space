@@ -58,7 +58,6 @@ function RobotModel({ url, wheelAnglesRad }: RobotModelProps) {
 }
 
 function Scene({ modelUrl }: { modelUrl: string | null }) {
-  const hasModel = Boolean(modelUrl)
   const { state } = useRobotState()
 
   const showAxes =
@@ -90,16 +89,16 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
       {/* Ground plane in ROS world is XY at z=0 (since Z is up). */}
       <mesh receiveShadow>
-        <planeGeometry args={[40, 40]} />
+        <planeGeometry args={[10, 10]} />
         <meshStandardMaterial color="#0f172a" />
       </mesh>
 
-      {!hasModel && (
-        <mesh position={[0, 0.75, 0]} castShadow>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#60a5fa" />
-        </mesh>
-      )}
+      {/* 1m grid lines over a 10x10m area, centered at origin. */}
+      <gridHelper
+        args={[10, 10]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0, 0.001]}
+      />
 
       {modelUrl ? (
         <Suspense fallback={null}>
