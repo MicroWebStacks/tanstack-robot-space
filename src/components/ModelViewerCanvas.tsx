@@ -76,26 +76,26 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
   return (
     <>
-      <color attach="background" args={['#0b1020']} />
+      <color attach="background" args={['#87cefa']} />
       <ambientLight intensity={0.7} />
       <directionalLight position={[6, 8, 4]} intensity={1.2} />
 
       {showAxes ? (
         // World axes at origin: X=red, Y=green, Z=blue
-        <group position={[0, 0.01, 0]}>
-          <axesHelper args={[3]} />
+        <group position={[0, 0, 0]}>
+          <axesHelper args={[1]} />
         </group>
       ) : null}
 
       {/* Ground plane in ROS world is XY at z=0 (since Z is up). */}
       <mesh receiveShadow>
         <planeGeometry args={[10, 10]} />
-        <meshStandardMaterial color="#0f172a" />
+        <meshStandardMaterial color="#666" roughness={1} metalness={0} />
       </mesh>
 
       {/* 1m grid lines over a 10x10m area, centered at origin. */}
       <gridHelper
-        args={[10, 10]}
+        args={[10, 10, '#94a3b8', '#64748b']}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0, 0.001]}
       />
@@ -124,10 +124,21 @@ export default function ModelViewerCanvas({
   active: boolean
   modelUrl: string | null
 }) {
+  // Default camera view direction (ROS world: X forward, Y left, Z up).
+  // Tune distance here without changing the viewing angle.
+  const CAMERA_DISTANCE = 2
+  const CAMERA_DIR: [number, number, number] = [3.5, -4.25, 2.25]
+  const cameraDirLen = Math.hypot(...CAMERA_DIR) || 1
+  const cameraPos: [number, number, number] = [
+    (CAMERA_DIR[0] * CAMERA_DISTANCE) / cameraDirLen,
+    (CAMERA_DIR[1] * CAMERA_DISTANCE) / cameraDirLen,
+    (CAMERA_DIR[2] * CAMERA_DISTANCE) / cameraDirLen,
+  ]
+
   return (
     <Canvas
       shadows
-      camera={{ position: [3.5, -4.25, 2.25], fov: 50, near: 0.1, far: 200 }}
+      camera={{ position: cameraPos, fov: 50, near: 0.1, far: 200 }}
       onCreated={({ camera, scene }) => {
         // ROS REP-103: Z is up.
         camera.up.set(0, 0, 1)
