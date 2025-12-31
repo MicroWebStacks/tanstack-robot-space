@@ -64,5 +64,13 @@ Environment variables (optional):
 - `UI_GATEWAY_STATUS_STALE_MS` (default: `7000`)
 - `UI_GATEWAY_SSE_RETRY_MS` (default: `2000`)
 
+Debug logging (optional):
+- `DEBUG_MODEL` — enables model/meta/file route info logs
+- `DEBUG_STATUS` — enables status stream info logs
+- `DEBUG_POSE` — enables pose/state stream info logs
+
+Notes:
+- Errors are always logged to stderr; `DEBUG_*` flags only control info/verbose logs.
+
 Proto:
 - `proto/ui_gateway.proto` (copied into this repo for now)

@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import Header from '../components/Header'
 import ModelViewerHost from '../components/ModelViewerHost'
 import { RobotStatusProvider } from '../lib/robotStatusClient'
+import { RobotStateProvider } from '../lib/robotStateClient'
 import { ensureRobotModelReady } from '../lib/robotModelClient'
 
 import appCss from '../styles.css?url'
@@ -61,21 +62,23 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <RobotStatusProvider>
-          <Header />
-          <ModelViewerHost />
-          {children}
-          <TanStackDevtools
-            config={{
-              position: 'bottom-right',
-            }}
-            plugins={[
-              {
-                name: 'Tanstack Router',
-                render: <TanStackRouterDevtoolsPanel />,
-              },
-            ]}
-          />
-          <Scripts />
+          <RobotStateProvider>
+            <Header />
+            <ModelViewerHost />
+            {children}
+            <TanStackDevtools
+              config={{
+                position: 'bottom-right',
+              }}
+              plugins={[
+                {
+                  name: 'Tanstack Router',
+                  render: <TanStackRouterDevtoolsPanel />,
+                },
+              ]}
+            />
+            <Scripts />
+          </RobotStateProvider>
         </RobotStatusProvider>
       </body>
     </html>

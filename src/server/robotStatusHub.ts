@@ -12,20 +12,21 @@ import {
   DEFAULT_STATUS_STALE_MS,
 } from '../lib/robotStatus'
 
-const debugGrpc =
-  process.env.UI_GATEWAY_DEBUG === '1' ||
-  process.env.UI_GATEWAY_DEBUG === 'true'
+import { isEnvTrue, loadRootEnvOnce } from './env'
 
-function debugLog(...args: unknown[]) {
-  if (!debugGrpc) return
-  // eslint-disable-next-line no-console
-  console.log('[ui-gateway]', ...args)
+loadRootEnvOnce()
+
+const debugStatus =
+  isEnvTrue('DEBUG_STATUS')
+
+function debugLog(line: string) {
+  if (!debugStatus) return
+  process.stdout.write(`[ui-status] ${line}\n`)
 }
 
-function debugError(...args: unknown[]) {
-  // Always log errors (even if debug is off).
-  // eslint-disable-next-line no-console
-  console.error('[ui-gateway]', ...args)
+function debugError(line: string, err?: unknown) {
+  const suffix = err ? ` ${String(err)}` : ''
+  process.stderr.write(`[ui-status] ${line}${suffix}\n`)
 }
 
 type RobotStatusListener = (status: RobotStatus | null) => void
@@ -173,7 +174,7 @@ function startGrpcLoop() {
 
   try {
     const protoPath = resolveProtoPath()
-    debugLog('connecting', { grpcAddr, protoPath })
+    debugLog(`connect ${grpcAddr}`)
 
     const packageDef = protoLoader.loadSync(protoPath, {
       keepCase: true,
@@ -205,11 +206,9 @@ function startGrpcLoop() {
     call.on('data', (raw: RawStatusUpdate) => {
       const normalized = normalizeStatusUpdate(raw)
       if (!normalized) return
-      debugLog('status', {
-        seq: normalized.seq,
-        timestampUnixMs: normalized.timestampUnixMs,
-        rateIds: Object.keys(normalized.rates),
-      })
+      debugLog(
+        `status seq=${normalized.seq} cpu=${normalized.cpuPercent.toFixed(1)} rates=${Object.keys(normalized.rates).length}`,
+      )
       publish(normalized)
       scheduleStaleClear()
     })

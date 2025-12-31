@@ -1,17 +1,8 @@
 import { OrbitControls, useGLTF } from '@react-three/drei'
-import { Canvas, useThree } from '@react-three/fiber'
-import { Suspense, useEffect } from 'react'
+import { Canvas } from '@react-three/fiber'
+import { Suspense } from 'react'
 
-function InvalidateOnActive({ active }: { active: boolean }) {
-  const invalidate = useThree((state) => state.invalidate)
-
-  useEffect(() => {
-    if (!active) return
-    invalidate()
-  }, [active, invalidate])
-
-  return null
-}
+import { useRobotState } from '../lib/robotStateClient'
 
 type RobotModelProps = {
   url: string
@@ -30,6 +21,15 @@ function RobotModel({ url }: RobotModelProps) {
 
 function Scene({ modelUrl }: { modelUrl: string | null }) {
   const hasModel = Boolean(modelUrl)
+  const { state } = useRobotState()
+
+  const pose = state?.poseOdom ?? null
+  // Coordinate mapping: ROS (X forward, Y left, Z up) -> Three (X, Y up, Z forward)
+  // We use a proper rotation mapping (no mirroring): threeX=rosY, threeY=rosZ, threeZ=rosX
+  const modelPos: [number, number, number] = pose
+    ? [pose.y, pose.z, pose.x]
+    : [0, 0, 0]
+  const modelRot: [number, number, number] = pose ? [0, pose.yawZ, 0] : [0, 0, 0]
 
   return (
     <>
@@ -51,7 +51,9 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
       {modelUrl ? (
         <Suspense fallback={null}>
-          <RobotModel url={modelUrl} />
+          <group position={modelPos} rotation={modelRot}>
+            <RobotModel url={modelUrl} />
+          </group>
         </Suspense>
       ) : null}
     </>
@@ -68,11 +70,9 @@ export default function ModelViewerCanvas({
   return (
     <Canvas
       shadows
-      frameloop="demand"
       camera={{ position: [3.5, 2.25, 4.25], fov: 50, near: 0.1, far: 200 }}
       style={{ width: '100%', height: '100%' }}
     >
-      <InvalidateOnActive active={active} />
       <Scene modelUrl={modelUrl} />
       <OrbitControls enabled={active} />
     </Canvas>

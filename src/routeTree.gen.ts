@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ModelRouteImport } from './routes/model'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiStatusRouteImport } from './routes/api.status'
+import { Route as ApiStateRouteImport } from './routes/api.state'
 import { Route as ApiStatusStreamRouteImport } from './routes/api.status.stream'
+import { Route as ApiStateStreamRouteImport } from './routes/api.state.stream'
 import { Route as ApiModelMetaRouteImport } from './routes/api.model.meta'
 import { Route as ApiModelFileRouteImport } from './routes/api.model.$file'
 
@@ -31,10 +33,20 @@ const ApiStatusRoute = ApiStatusRouteImport.update({
   path: '/api/status',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiStateRoute = ApiStateRouteImport.update({
+  id: '/api/state',
+  path: '/api/state',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStatusStreamRoute = ApiStatusStreamRouteImport.update({
   id: '/stream',
   path: '/stream',
   getParentRoute: () => ApiStatusRoute,
+} as any)
+const ApiStateStreamRoute = ApiStateStreamRouteImport.update({
+  id: '/stream',
+  path: '/stream',
+  getParentRoute: () => ApiStateRoute,
 } as any)
 const ApiModelMetaRoute = ApiModelMetaRouteImport.update({
   id: '/api/model/meta',
@@ -50,26 +62,32 @@ const ApiModelFileRoute = ApiModelFileRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/model': typeof ModelRoute
+  '/api/state': typeof ApiStateRouteWithChildren
   '/api/status': typeof ApiStatusRouteWithChildren
   '/api/model/$file': typeof ApiModelFileRoute
   '/api/model/meta': typeof ApiModelMetaRoute
+  '/api/state/stream': typeof ApiStateStreamRoute
   '/api/status/stream': typeof ApiStatusStreamRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/model': typeof ModelRoute
+  '/api/state': typeof ApiStateRouteWithChildren
   '/api/status': typeof ApiStatusRouteWithChildren
   '/api/model/$file': typeof ApiModelFileRoute
   '/api/model/meta': typeof ApiModelMetaRoute
+  '/api/state/stream': typeof ApiStateStreamRoute
   '/api/status/stream': typeof ApiStatusStreamRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/model': typeof ModelRoute
+  '/api/state': typeof ApiStateRouteWithChildren
   '/api/status': typeof ApiStatusRouteWithChildren
   '/api/model/$file': typeof ApiModelFileRoute
   '/api/model/meta': typeof ApiModelMetaRoute
+  '/api/state/stream': typeof ApiStateStreamRoute
   '/api/status/stream': typeof ApiStatusStreamRoute
 }
 export interface FileRouteTypes {
@@ -77,31 +95,38 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/model'
+    | '/api/state'
     | '/api/status'
     | '/api/model/$file'
     | '/api/model/meta'
+    | '/api/state/stream'
     | '/api/status/stream'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/model'
+    | '/api/state'
     | '/api/status'
     | '/api/model/$file'
     | '/api/model/meta'
+    | '/api/state/stream'
     | '/api/status/stream'
   id:
     | '__root__'
     | '/'
     | '/model'
+    | '/api/state'
     | '/api/status'
     | '/api/model/$file'
     | '/api/model/meta'
+    | '/api/state/stream'
     | '/api/status/stream'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ModelRoute: typeof ModelRoute
+  ApiStateRoute: typeof ApiStateRouteWithChildren
   ApiStatusRoute: typeof ApiStatusRouteWithChildren
   ApiModelFileRoute: typeof ApiModelFileRoute
   ApiModelMetaRoute: typeof ApiModelMetaRoute
@@ -130,12 +155,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/state': {
+      id: '/api/state'
+      path: '/api/state'
+      fullPath: '/api/state'
+      preLoaderRoute: typeof ApiStateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/status/stream': {
       id: '/api/status/stream'
       path: '/stream'
       fullPath: '/api/status/stream'
       preLoaderRoute: typeof ApiStatusStreamRouteImport
       parentRoute: typeof ApiStatusRoute
+    }
+    '/api/state/stream': {
+      id: '/api/state/stream'
+      path: '/stream'
+      fullPath: '/api/state/stream'
+      preLoaderRoute: typeof ApiStateStreamRouteImport
+      parentRoute: typeof ApiStateRoute
     }
     '/api/model/meta': {
       id: '/api/model/meta'
@@ -154,6 +193,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ApiStateRouteChildren {
+  ApiStateStreamRoute: typeof ApiStateStreamRoute
+}
+
+const ApiStateRouteChildren: ApiStateRouteChildren = {
+  ApiStateStreamRoute: ApiStateStreamRoute,
+}
+
+const ApiStateRouteWithChildren = ApiStateRoute._addFileChildren(
+  ApiStateRouteChildren,
+)
+
 interface ApiStatusRouteChildren {
   ApiStatusStreamRoute: typeof ApiStatusStreamRoute
 }
@@ -169,6 +220,7 @@ const ApiStatusRouteWithChildren = ApiStatusRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ModelRoute: ModelRoute,
+  ApiStateRoute: ApiStateRouteWithChildren,
   ApiStatusRoute: ApiStatusRouteWithChildren,
   ApiModelFileRoute: ApiModelFileRoute,
   ApiModelMetaRoute: ApiModelMetaRoute,

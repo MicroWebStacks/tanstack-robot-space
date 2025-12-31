@@ -2,11 +2,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 
-import * as dotenv from 'dotenv'
+import { isEnvTrue, loadRootEnvOnce } from './env'
 
 const LOG_PREFIX = '[robot-model-cache]'
 
+function shouldLogModel(): boolean {
+  loadRootEnvOnce()
+  return (
+    isEnvTrue('DEBUG_MODEL')
+  )
+}
+
 function log(message: string, data?: unknown) {
+  if (!shouldLogModel()) return
   const suffix =
     data === undefined
       ? ''
@@ -67,12 +75,6 @@ async function fileSize(filePath: string): Promise<number | null> {
   } catch {
     return null
   }
-}
-
-function loadRootEnvOnce() {
-  // Vite dev usually loads .env, but Nitro/build/runtime can vary.
-  // This keeps server routes consistent and allows MODEL_META to be plain (non-VITE_) env.
-  dotenv.config({ path: path.resolve(process.cwd(), '.env') })
 }
 
 function resolveModelMetaPath(): string {
