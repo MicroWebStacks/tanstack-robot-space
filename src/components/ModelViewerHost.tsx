@@ -19,12 +19,12 @@ function useIsModelRoute() {
 
 type ModelMetaResponse = {
   meta: {
-    sha256: string
-    sizeBytes: number
-    wheelJointNames: string[]
-    odomFrame?: string
-    baseFrame?: string
-    mapFrame?: string
+    coordinate_convention?: unknown
+    generator?: unknown
+    glb?: {
+      filename?: unknown
+    }
+    [k: string]: unknown
   }
   filename: string
   url: string
@@ -110,7 +110,18 @@ export default function ModelViewerHost() {
         })
         console.log('[model] metadata response status', res.status)
         if (!res.ok) {
-          throw new Error(`Meta request failed with ${res.status}`)
+          let details: string | null = null
+          try {
+            const body = (await res.json()) as any
+            if (typeof body?.error === 'string') details = body.error
+          } catch {
+            // ignore parse failures
+          }
+          throw new Error(
+            details
+              ? `Meta request failed (${res.status}): ${details}`
+              : `Meta request failed with ${res.status}`,
+          )
         }
 
         const data = (await res.json()) as ModelMetaResponse

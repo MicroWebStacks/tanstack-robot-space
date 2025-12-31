@@ -4,21 +4,36 @@ export const Route = createFileRoute('/api/model/meta')({
   server: {
     handlers: {
       GET: async () => {
-        const { getRobotModelMeta } = await import('../server/robotModelCache')
-        const { meta, filename } = await getRobotModelMeta()
+        try {
+          const { getRobotModelMeta } = await import('../server/robotModelCache')
+          const { meta, filename } = await getRobotModelMeta()
 
-        return Response.json(
-          {
-            meta,
-            filename,
-            url: `/api/model/${filename}`,
-          },
-          {
-            headers: {
-              'Cache-Control': 'no-store',
+          return Response.json(
+            {
+              meta,
+              filename,
+              url: `/api/model/${filename}`,
             },
-          },
-        )
+            {
+              headers: {
+                'Cache-Control': 'no-store',
+              },
+            },
+          )
+        } catch (err) {
+          return Response.json(
+            {
+              error:
+                err instanceof Error ? err.message : 'Failed to load model meta',
+            },
+            {
+              status: 503,
+              headers: {
+                'Cache-Control': 'no-store',
+              },
+            },
+          )
+        }
       },
     },
   },

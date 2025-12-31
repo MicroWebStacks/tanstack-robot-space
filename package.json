@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "dotenv": "^16.4.7",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
     "@react-three/drei": "^10.7.7",
