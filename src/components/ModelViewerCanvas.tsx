@@ -29,9 +29,8 @@ function RobotModel({ url, wheelAnglesRad }: RobotModelProps) {
         continue
       }
 
-      // Wheel joints in ROS are typically rotation about +Y (axle). With our axis mapping
-      // ROS Y -> Three X, so apply as a local X rotation.
-      obj.rotation.x = angleRad
+      // ROS REP-103: X forward, Y left, Z up. Wheels spin about their axle which is typically +Y.
+      obj.rotation.y = angleRad
     }
   }, [gltf, wheelAnglesRad])
 
@@ -55,12 +54,10 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
   const pose = state?.poseOdom ?? null
   const wheelAnglesRad = state?.wheelAnglesRad ?? null
-  // Coordinate mapping: ROS (X forward, Y left, Z up) -> Three (X, Y up, Z forward)
-  // We use a proper rotation mapping (no mirroring): threeX=rosY, threeY=rosZ, threeZ=rosX
-  const modelPos: [number, number, number] = pose
-    ? [pose.y, pose.z, pose.x]
-    : [0, 0, 0]
-  const modelRot: [number, number, number] = pose ? [0, pose.yawZ, 0] : [0, 0, 0]
+
+  // World frame matches ROS REP-103: X forward, Y left, Z up.
+  const modelPos: [number, number, number] = pose ? [pose.x, pose.y, pose.z] : [0, 0, 0]
+  const modelRot: [number, number, number] = pose ? [0, 0, pose.yawZ] : [0, 0, 0]
 
   return (
     <>
@@ -75,7 +72,8 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
         </group>
       ) : null}
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      {/* Ground plane in ROS world is XY at z=0 (since Z is up). */}
+      <mesh receiveShadow>
         <planeGeometry args={[40, 40]} />
         <meshStandardMaterial color="#0f172a" />
       </mesh>
@@ -114,7 +112,12 @@ export default function ModelViewerCanvas({
   return (
     <Canvas
       shadows
-      camera={{ position: [3.5, 2.25, 4.25], fov: 50, near: 0.1, far: 200 }}
+      camera={{ position: [3.5, -4.25, 2.25], fov: 50, near: 0.1, far: 200 }}
+      onCreated={({ camera, scene }) => {
+        // ROS REP-103: Z is up.
+        camera.up.set(0, 0, 1)
+        scene.up.set(0, 0, 1)
+      }}
       style={{ width: '100%', height: '100%' }}
     >
       <Scene modelUrl={modelUrl} />
