@@ -7,11 +7,13 @@ import * as dotenv from 'dotenv'
 const LOG_PREFIX = '[robot-model-cache]'
 
 function log(message: string, data?: unknown) {
-  if (data !== undefined) {
-    console.log(`${LOG_PREFIX} ${message}`, data)
-  } else {
-    console.log(`${LOG_PREFIX} ${message}`)
-  }
+  const suffix =
+    data === undefined
+      ? ''
+      : ` ${JSON.stringify(data, (_k, v) => (v === undefined ? null : v))}`
+
+  // Write directly to stdout to avoid noisy dev wrappers that add file/URL metadata.
+  process.stdout.write(`${LOG_PREFIX} ${message}${suffix}\n`)
 }
 
 function normalizeEnvPath(raw: string): string {
@@ -102,7 +104,7 @@ export async function getRobotModelMeta(): Promise<{
   filename: string
   filePath: string
 }> {
-  log('Client requested robot model metadata')
+  log('meta>get')
   return await readModelMeta()
 }
 
@@ -110,17 +112,13 @@ export async function serveRobotModelFile(
   filename: string,
   request: Request,
 ): Promise<Response> {
-  log('Serving model file request', {
-    filename,
-    url: request.url,
-    range: request.headers.get('range'),
+  log('glb>get', {
+    file: filename,
+    range: request.headers.get('range') ?? null,
   })
   const { filePath, filename: expectedFilename } = await readModelMeta()
   if (filename !== expectedFilename) {
-    log('Requested filename mismatch', {
-      requested: filename,
-      expected: expectedFilename,
-    })
+    log('glb>mismatch', { requested: filename, expected: expectedFilename })
     return new Response('Not found', { status: 404 })
   }
 
@@ -153,25 +151,14 @@ export async function serveRobotModelFile(
     const end =
       endStr && endStr.length > 0 ? Number(endStr) : Number(size) - 1
 
-    if (
-      Number.isNaN(start) ||
-      Number.isNaN(end) ||
-      start < 0 ||
-      end < start ||
-      start >= size
-    ) {
-      log('Invalid range requested', { start, end, size })
+    if (Number.isNaN(start) || Number.isNaN(end) || start < 0 || end < start || start >= size) {
+      log('glb>range-invalid', { start, end, size })
       return new Response('Requested Range Not Satisfiable', { status: 416 })
     }
 
     const nodeStream = fs.createReadStream(filePath, { start, end })
     const stream = Readable.toWeb(nodeStream) as unknown as ReadableStream
-    log('Returning partial content for model', {
-      start,
-      end,
-      size,
-      filename,
-    })
+    log('glb>206', { file: filename, start, end, size })
     return new Response(stream, {
       status: 206,
       headers: {
@@ -184,7 +171,7 @@ export async function serveRobotModelFile(
 
   const nodeStream = fs.createReadStream(filePath)
   const stream = Readable.toWeb(nodeStream) as unknown as ReadableStream
-  log('Returning full model content', { filename, size })
+  log('glb>200', { file: filename, size })
   return new Response(stream, {
     status: 200,
     headers: {
