@@ -4,6 +4,8 @@ Robot dashboard UI built with TanStack Start (Nitro) and a server-side gRPC clie
 
 The gRPC server is a ROS node running within this project workspace https://github.com/Roblibs/rovi_ros_ws
 
+Dashboard Gauges use svg for metrics status. Robot real time rendering (Rviz like) uses Threejs and three/fiber for threejs in react integration.
+
 ![screenshot](./docs/screenshot.png)
 
 ## Quickstart
