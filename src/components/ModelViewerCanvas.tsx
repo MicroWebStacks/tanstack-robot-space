@@ -14,6 +14,9 @@ function RobotModel({ url, wheelAnglesRad }: RobotModelProps) {
   const gltf = useGLTF(url) as any
 
   const warnedMissingRef = useRef<Set<string>>(new Set())
+  const wheelBaseRotRef = useRef<
+    Map<string, { x: number; y: number; z: number; order: string }>
+  >(new Map())
 
   useEffect(() => {
     if (!wheelAnglesRad) return
@@ -29,8 +32,21 @@ function RobotModel({ url, wheelAnglesRad }: RobotModelProps) {
         continue
       }
 
-      // ROS REP-103: X forward, Y left, Z up. Wheels spin about their axle which is typically +Y.
-      obj.rotation.y = angleRad
+      // URDF joints define wheel axis as xyz="0 0 1" (local +Z in the joint frame).
+      // Apply spin around the node's local Z while preserving its base orientation.
+      const base = wheelBaseRotRef.current.get(jointName)
+      if (!base) {
+        wheelBaseRotRef.current.set(jointName, {
+          x: obj.rotation.x,
+          y: obj.rotation.y,
+          z: obj.rotation.z,
+          order: obj.rotation.order ?? 'XYZ',
+        })
+      }
+
+      const nextBase = wheelBaseRotRef.current.get(jointName)!
+      obj.rotation.set(nextBase.x, nextBase.y, nextBase.z, nextBase.order)
+      obj.rotation.z += angleRad
     }
   }, [gltf, wheelAnglesRad])
 
