@@ -69,6 +69,9 @@ Debug logging (optional):
 - `DEBUG_STATUS` — enables status stream info logs
 - `DEBUG_POSE` — enables pose/state stream info logs
 
+Viewer debug (optional):
+- `VITE_THREE_AXES_DEBUG` — shows world + robot axes helpers in the 3D view
+
 Notes:
 - Errors are always logged to stderr; `DEBUG_*` flags only control info/verbose logs.
 
