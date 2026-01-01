@@ -69,8 +69,170 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
     import.meta.env.VITE_DEBUG_AXES === '1' ||
     String(import.meta.env.VITE_DEBUG_AXES).toLowerCase() === 'true'
 
-  const pose = state?.poseOdom ?? null
+  const lidarTsOffsetMs = Number(import.meta.env.VITE_LIDAR_TS_OFFSET_MS ?? 0) || 0
+
+  const fixedFrame = String(import.meta.env.VITE_FIXED_FRAME ?? 'odom').toLowerCase()
+  const useMapFrame = fixedFrame === 'map'
+
+  // Pick ONE fixed frame for the 3D view and stick to it.
+  // RViz fixed frame is typically "map" when map->odom is stable.
+  const pose = useMapFrame ? state?.poseMap ?? null : state?.poseOdom ?? null
   const wheelAnglesRad = state?.wheelAnglesRad ?? null
+
+  // Keep a short history of poses so we can pick the pose that matches the scan timestamp.
+  // RViz effectively does a TF lookup at the scan timestamp (with interpolation).
+  const POSE_HISTORY_MS = 2_000
+  type PoseSample = {
+    ts: number
+    seq: string
+    pose: NonNullable<NonNullable<typeof state>['poseOdom']>
+  }
+  const poseHistoryRef = useRef<PoseSample[]>([])
+
+  useEffect(() => {
+    if (!state) return
+    if (!pose) return
+
+    const ts = Number(state.timestampUnixMs)
+    if (!Number.isFinite(ts)) return
+
+    // Copy to avoid in-place mutations from upstream.
+    const next: PoseSample = { ts, seq: state.seq, pose: { ...pose } }
+    const buf = poseHistoryRef.current
+
+    // Assume monotonic timestamps; keep simple.
+    buf.push(next)
+
+    const cutoff = ts - POSE_HISTORY_MS
+    while (buf.length && buf[0].ts < cutoff) buf.shift()
+    // Hard cap to avoid unbounded growth if timestamps are weird.
+    if (buf.length > 1_000) buf.splice(0, buf.length - 1_000)
+  }, [state?.timestampUnixMs, state?.seq, pose ? 1 : 0, useMapFrame])
+
+  const poseSampleForScan = useMemo(() => {
+    if (!scan) return null
+
+    const rawScanTs = Number(scan.timestampUnixMs)
+    const scanTs = rawScanTs + lidarTsOffsetMs
+    if (!Number.isFinite(scanTs)) return null
+
+    const buf = poseHistoryRef.current
+    if (!buf.length) return null
+    // Fast paths for out-of-range.
+    if (scanTs <= buf[0].ts) {
+      return { ...buf[0], interp: { rawScanTs, scanTs, mode: 'clamp-low' as const } }
+    }
+    if (scanTs >= buf[buf.length - 1].ts) {
+      const b = buf[buf.length - 1]
+      const a = buf.length >= 2 ? buf[buf.length - 2] : null
+
+      // If LiDAR timestamp is ahead of the newest pose sample, extrapolate a bit using velocity.
+      const MAX_EXTRAP_MS = 250
+      const aheadMsRaw = scanTs - b.ts
+      const aheadMs = Math.min(MAX_EXTRAP_MS, Math.max(0, aheadMsRaw))
+
+      if (a && aheadMs > 0) {
+        const dtMs = b.ts - a.ts
+        if (dtMs > 0) {
+          const vx = (b.pose.x - a.pose.x) / dtMs
+          const vy = (b.pose.y - a.pose.y) / dtMs
+          const vz = (b.pose.z - a.pose.z) / dtMs
+          const dyaw = Math.atan2(
+            Math.sin(b.pose.yawZ - a.pose.yawZ),
+            Math.cos(b.pose.yawZ - a.pose.yawZ),
+          )
+          const wyaw = dyaw / dtMs
+
+          const pose = {
+            ...b.pose,
+            x: b.pose.x + vx * aheadMs,
+            y: b.pose.y + vy * aheadMs,
+            z: b.pose.z + vz * aheadMs,
+            yawZ: b.pose.yawZ + wyaw * aheadMs,
+          }
+
+          return {
+            ts: scanTs,
+            seq: b.seq,
+            pose,
+            interp: {
+              rawScanTs,
+              scanTs,
+              mode: 'extrap-high' as const,
+              aTs: a.ts,
+              aSeq: a.seq,
+              bTs: b.ts,
+              bSeq: b.seq,
+              aheadMs: aheadMsRaw,
+              usedMs: aheadMs,
+            },
+          }
+        }
+      }
+
+      return {
+        ...b,
+        interp: { rawScanTs, scanTs, mode: 'clamp-high' as const, aheadMs: aheadMsRaw },
+      }
+    }
+
+    // Find the bracketing samples. Buffer is append-only, so timestamps should be monotonic.
+    let hi = 1
+    while (hi < buf.length && buf[hi].ts < scanTs) hi++
+    const lo = Math.max(hi - 1, 0)
+
+    const a = buf[lo]
+    const b = buf[hi]
+    const span = b.ts - a.ts
+    const t = span > 0 ? (scanTs - a.ts) / span : 0
+    const alpha = Math.min(1, Math.max(0, t))
+
+    const lerp = (x: number, y: number) => x + (y - x) * alpha
+    const angleLerp = (x: number, y: number) => {
+      const d = Math.atan2(Math.sin(y - x), Math.cos(y - x))
+      return x + d * alpha
+    }
+
+    const pose = {
+      ...a.pose,
+      x: lerp(a.pose.x, b.pose.x),
+      y: lerp(a.pose.y, b.pose.y),
+      z: lerp(a.pose.z, b.pose.z),
+      yawZ: angleLerp(a.pose.yawZ, b.pose.yawZ),
+    }
+
+    // Pick seq as the nearer of the two samples (for logging/debug only).
+    const pick = Math.abs(scanTs - a.ts) <= Math.abs(b.ts - scanTs) ? a : b
+
+    return {
+      ts: scanTs,
+      seq: pick.seq,
+      pose,
+      interp: {
+        rawScanTs,
+        scanTs,
+        mode: 'interp' as const,
+        aTs: a.ts,
+        aSeq: a.seq,
+        bTs: b.ts,
+        bSeq: b.seq,
+        alpha,
+      },
+    }
+  }, [scan?.seq, scan?.timestampUnixMs, lidarTsOffsetMs])
+
+  const poseForScan = poseSampleForScan?.pose ?? null
+
+  // Minimal debug: log frameId once (or if it changes) to catch wrong-frame issues.
+  const lastLidarFrameRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!scan) return
+    const next = scan.frameId || '?'
+    if (lastLidarFrameRef.current === next) return
+    lastLidarFrameRef.current = next
+    // eslint-disable-next-line no-console
+    console.log(`[lidar] frame=${next}`)
+  }, [scan?.frameId])
 
   // World frame matches ROS REP-103: X forward, Y left, Z up.
   const modelPos: [number, number, number] = pose ? [pose.x, pose.y, pose.z] : [0, 0, 0]
@@ -119,10 +281,12 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
     if (validCount === 0) return null
 
-    const poseX = pose?.x ?? 0
-    const poseY = pose?.y ?? 0
-    const poseZ = pose?.z ?? 0
-    const yawRobot = pose?.yawZ ?? 0
+    if (!poseForScan) return null
+
+    const poseX = poseForScan.x
+    const poseY = poseForScan.y
+    const poseZ = poseForScan.z
+    const yawRobot = poseForScan.yawZ
     const yawLaser = LASER_RPY[2]
 
     const cosRobot = Math.cos(yawRobot)
@@ -383,7 +547,7 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
       worldFloorLineSegments,
       wallPositions,
     }
-  }, [scan, pose?.x, pose?.y, pose?.z, pose?.yawZ])
+  }, [scan, poseForScan?.x, poseForScan?.y, poseForScan?.z, poseForScan?.yawZ])
 
   return (
     <>
@@ -414,6 +578,44 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
       {/* Floor-projected Lidar (world z=0) */}
       {lidarGeo ? (
         <>
+          {/* Top lidar latched in world at scan arrival */}
+          {poseForScan ? (
+            <group
+              position={[poseForScan.x, poseForScan.y, poseForScan.z]}
+              rotation={[0, 0, poseForScan.yawZ]}
+            >
+              <group position={LASER_OFFSET} rotation={LASER_RPY}>
+                <points>
+                  <bufferGeometry>
+                    <bufferAttribute
+                      attach="attributes-position"
+                      args={[lidarGeo.localPositions, 3]}
+                    />
+                  </bufferGeometry>
+                  <pointsMaterial
+                    size={LIDAR_POINT_SIZE}
+                    color={LIDAR_POINT_COLOR}
+                    sizeAttenuation
+                    depthWrite={false}
+                  />
+                </points>
+
+                {lidarGeo.localLineSegments
+                  ? lidarGeo.localLineSegments.map((points, idx) => (
+                      <Line
+                        // eslint-disable-next-line react/no-array-index-key
+                        key={`lidar-top-${idx}`}
+                        points={points}
+                        color={LIDAR_LINE_COLOR}
+                        lineWidth={LIDAR_LINE_WIDTH}
+                        depthWrite={false}
+                      />
+                    ))
+                  : null}
+              </group>
+            </group>
+          ) : null}
+
           <points>
             <bufferGeometry>
               <bufferAttribute
@@ -471,38 +673,6 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
                 <axesHelper args={[1]} />
               </group>
             ) : null}
-
-            {/* Lidar point cloud in laser_link frame, attached to robot base_link */}
-            {lidarGeo ? (
-              <group position={LASER_OFFSET} rotation={LASER_RPY}>
-                <points>
-                  <bufferGeometry>
-                    <bufferAttribute
-                      attach="attributes-position"
-                      args={[lidarGeo.localPositions, 3]}
-                    />
-                  </bufferGeometry>
-                  <pointsMaterial
-                    size={LIDAR_POINT_SIZE}
-                    color={LIDAR_POINT_COLOR}
-                    sizeAttenuation
-                  />
-                </points>
-
-                {lidarGeo.localLineSegments
-                  ? lidarGeo.localLineSegments.map((points, idx) => (
-                      <Line
-                        // eslint-disable-next-line react/no-array-index-key
-                        key={idx}
-                        points={points}
-                        color={LIDAR_LINE_COLOR}
-                        lineWidth={LIDAR_LINE_WIDTH}
-                      />
-                    ))
-                  : null}
-              </group>
-            ) : null}
-
             <RobotModel url={modelUrl} wheelAnglesRad={wheelAnglesRad} />
           </group>
         </Suspense>
