@@ -52,8 +52,10 @@ The gRPC server is a ROS 2 node from a separate workspace:
 - Repo: https://github.com/Roblibs/rovi_ros_ws
 - Bridge package: `src/ros_ui_bridge` ([link](https://github.com/Roblibs/rovi_ros_ws/tree/main/src/ros_ui_bridge))
 
-**The contract is defined by the proto file in this repo:**
-- [proto/ui_bridge.proto](proto/ui_bridge.proto)
+**The contract (proto) is fetched from upstream:**
+- Source: https://github.com/Roblibs/rovi_ros_ws/blob/main/src/ros_ui_bridge/proto/ui_bridge.proto
+- Local (gitignored): `proto/ui_bridge.proto`
+- Fetch manually: `pnpm fetch-proto`
 
 If you need deeper context on what fields mean or how they're populated, consult the `ros_ui_bridge` package in `rovi_ros_ws`.
 
@@ -149,7 +151,7 @@ Current rendering stack: Three.js + `@react-three/fiber` + `@react-three/drei`. 
 | File | Purpose |
 |------|---------|
 | `src/server/env.ts` | Env loading helper |
-| `proto/ui_bridge.proto` | gRPC contract (source of truth) |
+| `proto/ui_bridge.proto` | gRPC contract (fetched via `pnpm fetch-proto`) |
 
 ## Environment variables
 | Variable | Default | Purpose |

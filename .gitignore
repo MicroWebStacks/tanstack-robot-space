@@ -12,3 +12,6 @@ count.txt
 .vinxi
 todos.json
 .cache/
+
+# Fetched from upstream (pnpm fetch-proto)
+proto/ui_bridge.proto

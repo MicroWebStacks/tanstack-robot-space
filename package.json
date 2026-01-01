@@ -6,7 +6,8 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "fetch-proto": "node scripts/fetch-proto.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
