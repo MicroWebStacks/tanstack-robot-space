@@ -63,8 +63,9 @@ type RawJointAngle = {
 type RawRobotStateUpdate = {
   timestamp_unix_ms?: unknown
   seq?: unknown
+  pose?: unknown
+  // Back-compat: older protos used pose_odom
   pose_odom?: unknown
-  pose_map?: unknown
   wheel_angles?: unknown
 }
 
@@ -147,7 +148,7 @@ function numberRequired(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function normalizePose3D(raw: unknown): RobotState['poseOdom'] | null {
+function normalizePose3D(raw: unknown): RobotState['pose'] | null {
   const p = raw as RawPose3D
   const frameId = typeof p?.frame_id === 'string' ? p.frame_id : ''
 
@@ -194,11 +195,8 @@ function normalizeRobotStateUpdate(raw: RawRobotStateUpdate): RobotState | null 
           ? String(seqRaw)
           : '0'
 
-  const poseOdom = normalizePose3D(raw.pose_odom)
-  if (!poseOdom) return null
-
-  const poseMapRaw = raw.pose_map ? normalizePose3D(raw.pose_map) : undefined
-  const poseMap = poseMapRaw ?? undefined
+  const pose = normalizePose3D(raw.pose ?? raw.pose_odom)
+  if (!pose) return null
 
   const wheelAnglesRad: Record<string, number> = {}
   const wheelAnglesRaw = Array.isArray(raw.wheel_angles)
@@ -214,8 +212,7 @@ function normalizeRobotStateUpdate(raw: RawRobotStateUpdate): RobotState | null 
   return {
     timestampUnixMs,
     seq,
-    poseOdom,
-    poseMap,
+    pose,
     wheelAnglesRad,
   }
 }
@@ -283,7 +280,7 @@ function startGrpcLoop() {
       const normalized = normalizeRobotStateUpdate(msg)
       if (!normalized) return
 
-      const p = normalized.poseOdom
+      const p = normalized.pose
       const wheels = formatWheelAngles(normalized.wheelAnglesRad)
       poseLog(
         `seq=${normalized.seq} pose x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} yawZ=${p.yawZ.toFixed(3)}${wheels}`,

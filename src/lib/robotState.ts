@@ -14,7 +14,7 @@ export type Pose3D = {
 export type RobotState = {
   timestampUnixMs: number
   seq: string
-  poseOdom: Pose3D
-  poseMap?: Pose3D
+  /** Authoritative pose chosen by the bridge (frame in Pose3D.frameId). */
+  pose: Pose3D
   wheelAnglesRad: Record<string, number>
 }

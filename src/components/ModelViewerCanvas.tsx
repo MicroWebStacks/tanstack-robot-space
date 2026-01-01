@@ -71,12 +71,9 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
   const lidarTsOffsetMs = Number(import.meta.env.VITE_LIDAR_TS_OFFSET_MS ?? 0) || 0
 
-  const fixedFrame = String(import.meta.env.VITE_FIXED_FRAME ?? 'odom').toLowerCase()
-  const useMapFrame = fixedFrame === 'map'
-
-  // Pick ONE fixed frame for the 3D view and stick to it.
-  // RViz fixed frame is typically "map" when map->odom is stable.
-  const pose = useMapFrame ? state?.poseMap ?? null : state?.poseOdom ?? null
+  // Single authoritative pose chosen by the bridge (frame in pose.frameId).
+  // Staleness is handled server-side via `clear` events (state becomes null).
+  const poseFromState = state?.pose ?? null
   const wheelAnglesRad = state?.wheelAnglesRad ?? null
 
   // Keep a short history of poses so we can pick the pose that matches the scan timestamp.
@@ -85,19 +82,24 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
   type PoseSample = {
     ts: number
     seq: string
-    pose: NonNullable<NonNullable<typeof state>['poseOdom']>
+    pose: NonNullable<NonNullable<typeof state>['pose']>
   }
   const poseHistoryRef = useRef<PoseSample[]>([])
 
   useEffect(() => {
-    if (!state) return
-    if (!pose) return
+    // If robot state is cleared (stale), drop the pose buffer so we don't
+    // apply old poses to new scans.
+    if (!state) {
+      poseHistoryRef.current = []
+      return
+    }
+    if (!poseFromState) return
 
     const ts = Number(state.timestampUnixMs)
     if (!Number.isFinite(ts)) return
 
     // Copy to avoid in-place mutations from upstream.
-    const next: PoseSample = { ts, seq: state.seq, pose: { ...pose } }
+    const next: PoseSample = { ts, seq: state.seq, pose: { ...poseFromState } }
     const buf = poseHistoryRef.current
 
     // Assume monotonic timestamps; keep simple.
@@ -107,7 +109,7 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
     while (buf.length && buf[0].ts < cutoff) buf.shift()
     // Hard cap to avoid unbounded growth if timestamps are weird.
     if (buf.length > 1_000) buf.splice(0, buf.length - 1_000)
-  }, [state?.timestampUnixMs, state?.seq, pose ? 1 : 0, useMapFrame])
+  }, [state?.timestampUnixMs, state?.seq, poseFromState ? 1 : 0, state ? 1 : 0])
 
   const poseSampleForScan = useMemo(() => {
     if (!scan) return null
@@ -235,8 +237,12 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
   }, [scan?.frameId])
 
   // World frame matches ROS REP-103: X forward, Y left, Z up.
-  const modelPos: [number, number, number] = pose ? [pose.x, pose.y, pose.z] : [0, 0, 0]
-  const modelRot: [number, number, number] = pose ? [0, 0, pose.yawZ] : [0, 0, 0]
+  const modelPos: [number, number, number] = poseFromState
+    ? [poseFromState.x, poseFromState.y, poseFromState.z]
+    : [0, 0, 0]
+  const modelRot: [number, number, number] = poseFromState
+    ? [0, 0, poseFromState.yawZ]
+    : [0, 0, 0]
 
   // Fixed transform from base_link -> laser_link (URDF `laser_joint`)
   const LASER_OFFSET: [number, number, number] = [0.129, 0, 0.1645]
