@@ -31,7 +31,7 @@ The browser never connects to gRPC directly. Nitro (Node) subscribes to the gRPC
 - `GET /api/status/stream` — SSE stream (`event: status` / `event: clear`)
 
 ```mermaid
-flowchart LR
+flowchart TD
   GRPC[gRPC UiBridge<br/>0.0.0.0:50051] -->|GetStatus stream| HUB[Nitro server<br/>src/server/robotStatusHub.ts]
   HUB -->|"GET /api/status (JSON)"| UI[React UI<br/>src/routes/index.tsx]
   HUB -->|"GET /api/status/stream (SSE)"| UI
