@@ -1,8 +1,7 @@
-import { OrbitControls, useGLTF } from '@react-three/drei'
+import { Line, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 
-import type { LidarScan } from '../lib/lidarScan'
 import { useLidarScan } from '../lib/lidarClient'
 import { useRobotState } from '../lib/robotStateClient'
 
@@ -81,7 +80,24 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
   const LASER_OFFSET: [number, number, number] = [0.129, 0, 0.1645]
   const LASER_RPY: [number, number, number] = [0, 0, Math.PI]
 
-  const lidarPositions = useMemo(() => {
+  // Visual tuning
+  const LIDAR_POINT_SIZE = 0.02
+  const LIDAR_POINT_COLOR = '#ff0000'
+  const LIDAR_LINE_COLOR = '#ff0000'
+  const LIDAR_LINE_WIDTH = 1
+
+  // If consecutive points are farther than this, don't connect them with lines/walls.
+  const LIDAR_LINE_BREAK_M = 0.2
+
+  const LIDAR_FLOOR_POINT_SIZE = 0.02
+  const LIDAR_FLOOR_POINT_COLOR = '#000000'
+  const LIDAR_FLOOR_LINE_COLOR = '#000000'
+  const LIDAR_FLOOR_LINE_WIDTH = 1
+
+  const LIDAR_WALL_COLOR = '#ff0000'
+  const LIDAR_WALL_OPACITY = 0.22
+
+  const lidarGeo = useMemo(() => {
     if (!scan) return null
 
     const ranges = scan.ranges
@@ -101,8 +117,25 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
       validCount++
     }
 
-    const positions = new Float32Array(validCount * 3)
-    let out = 0
+    if (validCount === 0) return null
+
+    const poseX = pose?.x ?? 0
+    const poseY = pose?.y ?? 0
+    const poseZ = pose?.z ?? 0
+    const yawRobot = pose?.yawZ ?? 0
+    const yawLaser = LASER_RPY[2]
+
+    const cosRobot = Math.cos(yawRobot)
+    const sinRobot = Math.sin(yawRobot)
+    const cosLaser = Math.cos(yawLaser)
+    const sinLaser = Math.sin(yawLaser)
+
+    const localPositions = new Float32Array(validCount * 3)
+    const worldTopPositions = new Float32Array(validCount * 3)
+    const worldFloorPositions = new Float32Array(validCount * 3)
+
+    let outLocal = 0
+    let outWorld = 0
     for (let i = 0; i < ranges.length; i++) {
       const r = ranges[i]
       if (!Number.isFinite(r)) continue
@@ -110,13 +143,247 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
       const theta = angleMin + i * angleIncrement
       // ROS LaserScan: angles around +Z axis in the sensor frame.
-      positions[out++] = r * Math.cos(theta)
-      positions[out++] = r * Math.sin(theta)
-      positions[out++] = 0
+      const xS = r * Math.cos(theta)
+      const yS = r * Math.sin(theta)
+
+      localPositions[outLocal++] = xS
+      localPositions[outLocal++] = yS
+      localPositions[outLocal++] = 0
+
+      // Sensor -> base (laser yaw + offset)
+      const xL = xS * cosLaser - yS * sinLaser
+      const yL = xS * sinLaser + yS * cosLaser
+      const xB = LASER_OFFSET[0] + xL
+      const yB = LASER_OFFSET[1] + yL
+      const zB = LASER_OFFSET[2]
+
+      // Base -> world (robot yaw + pose)
+      const xW = poseX + xB * cosRobot - yB * sinRobot
+      const yW = poseY + xB * sinRobot + yB * cosRobot
+      const zW = poseZ + zB
+
+      worldTopPositions[outWorld] = xW
+      worldFloorPositions[outWorld++] = xW
+      worldTopPositions[outWorld] = yW
+      worldFloorPositions[outWorld++] = yW
+      worldTopPositions[outWorld] = zW
+      worldFloorPositions[outWorld++] = 0
     }
 
-    return positions
-  }, [scan])
+    let localLineSegments: [number, number, number][][] | null = null
+    let worldFloorLineSegments: [number, number, number][][] | null = null
+    let wallPositions: Float32Array | null = null
+
+    if (validCount >= 2) {
+      localLineSegments = []
+      worldFloorLineSegments = []
+
+      const pushIfValid = (segments: [number, number, number][][], seg: [number, number, number][]) => {
+        if (seg.length >= 2) segments.push(seg)
+      }
+
+      // Build segmented polyline in local (laser) frame.
+      {
+        let seg: [number, number, number][] = []
+        let prevX = 0
+        let prevY = 0
+        let prevSet = false
+
+        for (let i = 0; i < validCount; i++) {
+          const ix = i * 3
+          const x = localPositions[ix]
+          const y = localPositions[ix + 1]
+          const z = localPositions[ix + 2]
+
+          if (!prevSet) {
+            seg.push([x, y, z])
+            prevX = x
+            prevY = y
+            prevSet = true
+            continue
+          }
+
+          const dx = x - prevX
+          const dy = y - prevY
+          const dist = Math.hypot(dx, dy)
+
+          if (dist <= LIDAR_LINE_BREAK_M) {
+            seg.push([x, y, z])
+          } else {
+            pushIfValid(localLineSegments, seg)
+            seg = [[x, y, z]]
+          }
+
+          prevX = x
+          prevY = y
+        }
+
+        pushIfValid(localLineSegments, seg)
+
+        // Closed loop only if we never broke the line and end-to-start is also within threshold.
+        if (localLineSegments.length === 1 && localLineSegments[0].length === validCount) {
+          const first = localLineSegments[0][0]
+          const last = localLineSegments[0][localLineSegments[0].length - 1]
+          const dist = Math.hypot(first[0] - last[0], first[1] - last[1])
+          if (dist <= LIDAR_LINE_BREAK_M) {
+            localLineSegments[0].push(first)
+          }
+        }
+      }
+
+      // Build segmented polyline on the world floor (z=0).
+      {
+        let seg: [number, number, number][] = []
+        let prevX = 0
+        let prevY = 0
+        let prevSet = false
+
+        for (let i = 0; i < validCount; i++) {
+          const ix = i * 3
+          const x = worldFloorPositions[ix]
+          const y = worldFloorPositions[ix + 1]
+          const z = worldFloorPositions[ix + 2]
+
+          if (!prevSet) {
+            seg.push([x, y, z])
+            prevX = x
+            prevY = y
+            prevSet = true
+            continue
+          }
+
+          const dx = x - prevX
+          const dy = y - prevY
+          const dist = Math.hypot(dx, dy)
+
+          if (dist <= LIDAR_LINE_BREAK_M) {
+            seg.push([x, y, z])
+          } else {
+            pushIfValid(worldFloorLineSegments, seg)
+            seg = [[x, y, z]]
+          }
+
+          prevX = x
+          prevY = y
+        }
+
+        pushIfValid(worldFloorLineSegments, seg)
+
+        if (
+          worldFloorLineSegments.length === 1 &&
+          worldFloorLineSegments[0].length === validCount
+        ) {
+          const first = worldFloorLineSegments[0][0]
+          const last = worldFloorLineSegments[0][worldFloorLineSegments[0].length - 1]
+          const dist = Math.hypot(first[0] - last[0], first[1] - last[1])
+          if (dist <= LIDAR_LINE_BREAK_M) {
+            worldFloorLineSegments[0].push(first)
+          }
+        }
+      }
+
+      // Build "wall" quads only across short edges (skip huge jumps).
+      {
+        const wall: number[] = []
+        const addQuad = (
+          topAx: number,
+          topAy: number,
+          topAz: number,
+          topBx: number,
+          topBy: number,
+          topBz: number,
+          floorAx: number,
+          floorAy: number,
+          floorAz: number,
+          floorBx: number,
+          floorBy: number,
+          floorBz: number,
+        ) => {
+          // Two triangles: topA-topB-floorB, topA-floorB-floorA
+          wall.push(
+            topAx,
+            topAy,
+            topAz,
+            topBx,
+            topBy,
+            topBz,
+            floorBx,
+            floorBy,
+            floorBz,
+            topAx,
+            topAy,
+            topAz,
+            floorBx,
+            floorBy,
+            floorBz,
+            floorAx,
+            floorAy,
+            floorAz,
+          )
+        }
+
+        const edgeOk = (i3: number, j3: number) => {
+          const dx = worldTopPositions[j3] - worldTopPositions[i3]
+          const dy = worldTopPositions[j3 + 1] - worldTopPositions[i3 + 1]
+          return Math.hypot(dx, dy) <= LIDAR_LINE_BREAK_M
+        }
+
+        for (let i = 0; i < validCount - 1; i++) {
+          const j = i + 1
+          const i3 = i * 3
+          const j3 = j * 3
+          if (!edgeOk(i3, j3)) continue
+
+          addQuad(
+            worldTopPositions[i3],
+            worldTopPositions[i3 + 1],
+            worldTopPositions[i3 + 2],
+            worldTopPositions[j3],
+            worldTopPositions[j3 + 1],
+            worldTopPositions[j3 + 2],
+            worldFloorPositions[i3],
+            worldFloorPositions[i3 + 1],
+            worldFloorPositions[i3 + 2],
+            worldFloorPositions[j3],
+            worldFloorPositions[j3 + 1],
+            worldFloorPositions[j3 + 2],
+          )
+        }
+
+        // Close only if last->first is within threshold.
+        if (validCount >= 3) {
+          const i3 = (validCount - 1) * 3
+          const j3 = 0
+          if (edgeOk(i3, j3)) {
+            addQuad(
+              worldTopPositions[i3],
+              worldTopPositions[i3 + 1],
+              worldTopPositions[i3 + 2],
+              worldTopPositions[j3],
+              worldTopPositions[j3 + 1],
+              worldTopPositions[j3 + 2],
+              worldFloorPositions[i3],
+              worldFloorPositions[i3 + 1],
+              worldFloorPositions[i3 + 2],
+              worldFloorPositions[j3],
+              worldFloorPositions[j3 + 1],
+              worldFloorPositions[j3 + 2],
+            )
+          }
+        }
+
+        wallPositions = wall.length ? new Float32Array(wall) : null
+      }
+    }
+
+    return {
+      localPositions,
+      worldFloorPositions,
+      localLineSegments,
+      worldFloorLineSegments,
+      wallPositions,
+    }
+  }, [scan, pose?.x, pose?.y, pose?.z, pose?.yawZ])
 
   return (
     <>
@@ -144,6 +411,57 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
         position={[0, 0, 0.001]}
       />
 
+      {/* Floor-projected Lidar (world z=0) */}
+      {lidarGeo ? (
+        <>
+          <points>
+            <bufferGeometry>
+              <bufferAttribute
+                attach="attributes-position"
+                args={[lidarGeo.worldFloorPositions, 3]}
+              />
+            </bufferGeometry>
+            <pointsMaterial
+              size={LIDAR_FLOOR_POINT_SIZE}
+              color={LIDAR_FLOOR_POINT_COLOR}
+              sizeAttenuation
+              depthWrite={false}
+            />
+          </points>
+
+          {lidarGeo.worldFloorLineSegments
+            ? lidarGeo.worldFloorLineSegments.map((points, idx) => (
+                <Line
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={idx}
+                  points={points}
+                  color={LIDAR_FLOOR_LINE_COLOR}
+                  lineWidth={LIDAR_FLOOR_LINE_WIDTH}
+                  depthWrite={false}
+                />
+              ))
+            : null}
+
+          {lidarGeo.wallPositions ? (
+            <mesh>
+              <bufferGeometry>
+                <bufferAttribute
+                  attach="attributes-position"
+                  args={[lidarGeo.wallPositions, 3]}
+                />
+              </bufferGeometry>
+              <meshBasicMaterial
+                color={LIDAR_WALL_COLOR}
+                transparent
+                opacity={LIDAR_WALL_OPACITY}
+                side={2}
+                depthWrite={false}
+              />
+            </mesh>
+          ) : null}
+        </>
+      ) : null}
+
       {modelUrl ? (
         <Suspense fallback={null}>
           <group position={modelPos} rotation={modelRot}>
@@ -155,17 +473,33 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
             ) : null}
 
             {/* Lidar point cloud in laser_link frame, attached to robot base_link */}
-            {lidarPositions ? (
+            {lidarGeo ? (
               <group position={LASER_OFFSET} rotation={LASER_RPY}>
                 <points>
                   <bufferGeometry>
                     <bufferAttribute
                       attach="attributes-position"
-                      args={[lidarPositions, 3]}
+                      args={[lidarGeo.localPositions, 3]}
                     />
                   </bufferGeometry>
-                  <pointsMaterial size={0.02} color="#ffffff" sizeAttenuation />
+                  <pointsMaterial
+                    size={LIDAR_POINT_SIZE}
+                    color={LIDAR_POINT_COLOR}
+                    sizeAttenuation
+                  />
                 </points>
+
+                {lidarGeo.localLineSegments
+                  ? lidarGeo.localLineSegments.map((points, idx) => (
+                      <Line
+                        // eslint-disable-next-line react/no-array-index-key
+                        key={idx}
+                        points={points}
+                        color={LIDAR_LINE_COLOR}
+                        lineWidth={LIDAR_LINE_WIDTH}
+                      />
+                    ))
+                  : null}
               </group>
             ) : null}
 
