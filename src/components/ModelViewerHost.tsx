@@ -11,6 +11,7 @@ import {
 
 import type { ModelMetaResponse } from '../lib/robotModelClient'
 import { ensureRobotModelReady, getCachedRobotModelMeta } from '../lib/robotModelClient'
+import { LidarScanProvider } from '../lib/lidarClient'
 
 const ModelViewerCanvas = lazy(() => import('./ModelViewerCanvas'))
 
@@ -144,7 +145,11 @@ export default function ModelViewerHost() {
           </div>
         }
       >
-        <ModelViewerCanvas active={isModelRoute} modelUrl={modelUrl} />
+        {isModelRoute ? (
+          <LidarScanProvider>
+            <ModelViewerCanvas active={isModelRoute} modelUrl={modelUrl} />
+          </LidarScanProvider>
+        ) : null}
       </Suspense>
       {(metaError || modelMeta) && (
         <div className="pointer-events-none absolute left-4 bottom-4 rounded-lg bg-white/10 px-3 py-2 text-xs text-white shadow-xl backdrop-blur">

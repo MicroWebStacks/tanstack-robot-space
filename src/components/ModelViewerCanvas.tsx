@@ -1,7 +1,9 @@
 import { OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
-import { Suspense, useEffect, useRef } from 'react'
+import { Suspense, useEffect, useMemo, useRef } from 'react'
 
+import type { LidarScan } from '../lib/lidarScan'
+import { useLidarScan } from '../lib/lidarClient'
 import { useRobotState } from '../lib/robotStateClient'
 
 type RobotModelProps = {
@@ -59,6 +61,7 @@ function RobotModel({ url, wheelAnglesRad }: RobotModelProps) {
 
 function Scene({ modelUrl }: { modelUrl: string | null }) {
   const { state } = useRobotState()
+  const { scan } = useLidarScan()
 
   const showAxes =
     import.meta.env.VITE_THREE_AXES_DEBUG === '1' ||
@@ -73,6 +76,47 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
   // World frame matches ROS REP-103: X forward, Y left, Z up.
   const modelPos: [number, number, number] = pose ? [pose.x, pose.y, pose.z] : [0, 0, 0]
   const modelRot: [number, number, number] = pose ? [0, 0, pose.yawZ] : [0, 0, 0]
+
+  // Fixed transform from base_link -> laser_link (URDF `laser_joint`)
+  const LASER_OFFSET: [number, number, number] = [0.129, 0, 0.1645]
+  const LASER_RPY: [number, number, number] = [0, 0, Math.PI]
+
+  const lidarPositions = useMemo(() => {
+    if (!scan) return null
+
+    const ranges = scan.ranges
+    const angleMin = scan.angleMin
+    const angleIncrement = scan.angleIncrement
+
+    if (!Number.isFinite(angleMin) || !Number.isFinite(angleIncrement) || angleIncrement === 0) {
+      return null
+    }
+
+    // Pre-count valid points to allocate once.
+    let validCount = 0
+    for (let i = 0; i < ranges.length; i++) {
+      const r = ranges[i]
+      if (!Number.isFinite(r)) continue
+      if (r < scan.rangeMin || r > scan.rangeMax) continue
+      validCount++
+    }
+
+    const positions = new Float32Array(validCount * 3)
+    let out = 0
+    for (let i = 0; i < ranges.length; i++) {
+      const r = ranges[i]
+      if (!Number.isFinite(r)) continue
+      if (r < scan.rangeMin || r > scan.rangeMax) continue
+
+      const theta = angleMin + i * angleIncrement
+      // ROS LaserScan: angles around +Z axis in the sensor frame.
+      positions[out++] = r * Math.cos(theta)
+      positions[out++] = r * Math.sin(theta)
+      positions[out++] = 0
+    }
+
+    return positions
+  }, [scan])
 
   return (
     <>
@@ -109,6 +153,22 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
                 <axesHelper args={[1]} />
               </group>
             ) : null}
+
+            {/* Lidar point cloud in laser_link frame, attached to robot base_link */}
+            {lidarPositions ? (
+              <group position={LASER_OFFSET} rotation={LASER_RPY}>
+                <points>
+                  <bufferGeometry>
+                    <bufferAttribute
+                      attach="attributes-position"
+                      args={[lidarPositions, 3]}
+                    />
+                  </bufferGeometry>
+                  <pointsMaterial size={0.02} color="#ffffff" sizeAttenuation />
+                </points>
+              </group>
+            ) : null}
+
             <RobotModel url={modelUrl} wheelAnglesRad={wheelAnglesRad} />
           </group>
         </Suspense>

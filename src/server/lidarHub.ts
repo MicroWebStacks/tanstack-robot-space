@@ -142,7 +142,9 @@ function normalizeLidarUpdate(raw: RawLidarUpdate): LidarScan | null {
 
   const frameId = typeof raw.frame_id === 'string' ? raw.frame_id : ''
 
-  const angleMin = Number(raw.angle_min)
+  // proto3 scalar fields with default values may be omitted by proto-loader when
+  // `defaults: false` (ex: angle_min=0). Treat missing as 0.
+  const angleMin = raw.angle_min == null ? 0 : Number(raw.angle_min)
   if (!Number.isFinite(angleMin)) return null
 
   const angleIncrement = Number(raw.angle_increment)
