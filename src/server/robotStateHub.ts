@@ -286,7 +286,7 @@ function startGrpcLoop() {
       const p = normalized.poseOdom
       const wheels = formatWheelAngles(normalized.wheelAnglesRad)
       poseLog(
-        `pose x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} yawZ=${p.yawZ.toFixed(3)}${wheels}`,
+        `seq=${normalized.seq} pose x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} yawZ=${p.yawZ.toFixed(3)}${wheels}`,
       )
 
       publish(normalized)
