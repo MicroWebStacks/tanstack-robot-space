@@ -54,6 +54,21 @@ sequenceDiagram
   API-->>UI: event: clear (no data)
 ```
 
+### GET vs Stream endpoints
+
+Each data type (status, state, lidar) exposes two endpoints:
+
+- **GET `/api/<type>`** — Returns the cached latest value immediately. On first request (before gRPC delivers data), returns `null`. Useful for one-off checks or initial hydration.
+- **GET `/api/<type>/stream`** — SSE stream that delivers the cached value on connect (if available), then forwards all subsequent updates in real-time.
+
+The server maintains a single shared gRPC subscription per data type. The hub caches the latest value so GET requests are instant (no round-trip to gRPC), and fans out updates to all SSE subscribers.
+
+### Null handling
+
+When no data has arrived yet (or after a `clear` event), the API returns `null`. The UI handles this gracefully:
+- **Status/Lidar**: Gauges and visualizations show `--` placeholder
+- **Robot State**: The 3D model renders at origin (position `[0,0,0]`, no rotation) — this ensures the model is visible immediately without waiting for pose data
+
 ## Staleness policy (no “made up” values)
 
 - Until the first `StatusUpdate` arrives, the UI shows `--`.
