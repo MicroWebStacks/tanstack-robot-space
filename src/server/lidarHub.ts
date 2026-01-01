@@ -5,120 +5,25 @@ import { fileURLToPath } from 'node:url'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 
-import type { RobotStatus } from '../lib/robotStatus'
-import {
-  DEFAULT_BRIDGE_STALE_MS,
-  DEFAULT_GRPC_ADDR,
-  DEFAULT_GRPC_RECONNECT_MS,
-} from '../lib/robotStatus'
+import type { LidarScan } from '../lib/lidarScan'
+import { DEFAULT_BRIDGE_STALE_MS, DEFAULT_GRPC_ADDR, DEFAULT_GRPC_RECONNECT_MS } from '../lib/robotStatus'
 
 import { isEnvTrue, loadRootEnvOnce } from './env'
 
 loadRootEnvOnce()
 
-const debugStatus =
-  isEnvTrue('DEBUG_STATUS')
+const LOG_PREFIX = '[lidar]'
+
+const debugLidar = isEnvTrue('DEBUG_LIDAR')
 
 function debugLog(line: string) {
-  if (!debugStatus) return
-  process.stdout.write(`[ui-status] ${line}\n`)
+  if (!debugLidar) return
+  process.stdout.write(`${LOG_PREFIX} ${line}\n`)
 }
 
-function debugError(line: string, err?: unknown) {
+function errorLog(line: string, err?: unknown) {
   const suffix = err ? ` ${String(err)}` : ''
-  process.stderr.write(`[ui-status] ${line}${suffix}\n`)
-}
-
-type RobotStatusListener = (status: RobotStatus | null) => void
-
-type RawRateMetric = {
-  id?: unknown
-  hz?: unknown
-  target_hz?: unknown
-}
-
-type RawStatusUpdate = {
-  timestamp_unix_ms?: unknown
-  seq?: unknown
-  cpu_percent?: unknown
-  voltage_v?: unknown
-  rates?: unknown
-}
-
-const grpcAddr = process.env.UI_GATEWAY_GRPC_ADDR ?? DEFAULT_GRPC_ADDR
-const grpcReconnectMs =
-  Number(
-    process.env.UI_GATEWAY_GRPC_RECONNECT_MS ?? DEFAULT_GRPC_RECONNECT_MS,
-  ) || DEFAULT_GRPC_RECONNECT_MS
-const statusStaleMs =
-  Number(process.env.BRIDGE_STALE_MS ?? DEFAULT_BRIDGE_STALE_MS) ||
-  DEFAULT_BRIDGE_STALE_MS
-
-let started = false
-
-let latestStatus: RobotStatus | null = null
-let staleTimer: NodeJS.Timeout | null = null
-const subscribers = new Set<RobotStatusListener>()
-
-let reconnectTimer: NodeJS.Timeout | null = null
-let activeClient: grpc.Client | null = null
-let activeCall: grpc.ClientReadableStream<unknown> | null = null
-
-let reconnectAttempt = 0
-let gotDataSinceConnect = false
-
-function getReconnectDelayMs(attempt: number): number {
-  if (attempt <= 5) return grpcReconnectMs
-  if (attempt <= 10) return 60_000
-  return 300_000
-}
-
-export function getRobotStatusSnapshot(): RobotStatus | null {
-  ensureStarted()
-  return latestStatus
-}
-
-export function subscribeRobotStatus(
-  listener: RobotStatusListener,
-): () => void {
-  ensureStarted()
-  subscribers.add(listener)
-  if (latestStatus) listener(latestStatus)
-  return () => subscribers.delete(listener)
-}
-
-function ensureStarted() {
-  if (started) return
-  started = true
-  startGrpcLoop()
-}
-
-function publish(status: RobotStatus | null) {
-  latestStatus = status
-  for (const listener of subscribers) listener(status)
-}
-
-function clearAsStale() {
-  publish(null)
-}
-
-function scheduleStaleClear() {
-  if (staleTimer) clearTimeout(staleTimer)
-  staleTimer = setTimeout(clearAsStale, statusStaleMs)
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer) return
-
-  const nextAttempt = reconnectAttempt + 1
-  const delayMs = getReconnectDelayMs(nextAttempt)
-  reconnectAttempt = nextAttempt
-
-  debugLog(`reconn ${delayMs}ms #${reconnectAttempt}`)
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null
-    startGrpcLoop()
-  }, delayMs)
+  process.stderr.write(`${LOG_PREFIX} ${line}${suffix}\n`)
 }
 
 function resolveProtoPath() {
@@ -136,14 +41,96 @@ function resolveProtoPath() {
   throw new Error('Unable to locate ui_bridge.proto (or ui_gateway.proto fallback)')
 }
 
-function normalizeStatusUpdate(update: RawStatusUpdate): RobotStatus | null {
-  const timestampUnixMs = Number(update.timestamp_unix_ms)
+type LidarScanListener = (scan: LidarScan | null) => void
+
+type RawLidarUpdate = {
+  timestamp_unix_ms?: unknown
+  seq?: unknown
+  frame_id?: unknown
+  angle_min?: unknown
+  angle_increment?: unknown
+  range_min?: unknown
+  range_max?: unknown
+  ranges?: unknown
+}
+
+const grpcAddr = process.env.UI_GATEWAY_GRPC_ADDR ?? DEFAULT_GRPC_ADDR
+const grpcReconnectMs =
+  Number(process.env.UI_GATEWAY_GRPC_RECONNECT_MS ?? DEFAULT_GRPC_RECONNECT_MS) ||
+  DEFAULT_GRPC_RECONNECT_MS
+const lidarStaleMs =
+  Number(process.env.BRIDGE_STALE_MS ?? DEFAULT_BRIDGE_STALE_MS) ||
+  DEFAULT_BRIDGE_STALE_MS
+
+let started = false
+let latestScan: LidarScan | null = null
+let staleTimer: NodeJS.Timeout | null = null
+const subscribers = new Set<LidarScanListener>()
+
+let reconnectTimer: NodeJS.Timeout | null = null
+let activeClient: grpc.Client | null = null
+let activeCall: grpc.ClientReadableStream<unknown> | null = null
+
+let reconnectAttempt = 0
+let gotDataSinceConnect = false
+
+function getReconnectDelayMs(attempt: number): number {
+  if (attempt <= 5) return grpcReconnectMs
+  if (attempt <= 10) return 60_000
+  return 300_000
+}
+
+export function getLidarScanSnapshot(): LidarScan | null {
+  ensureStarted()
+  return latestScan
+}
+
+export function subscribeLidarScan(listener: LidarScanListener): () => void {
+  ensureStarted()
+  subscribers.add(listener)
+  if (latestScan) listener(latestScan)
+  return () => subscribers.delete(listener)
+}
+
+function ensureStarted() {
+  if (started) return
+  started = true
+  startGrpcLoop()
+}
+
+function publish(scan: LidarScan | null) {
+  latestScan = scan
+  for (const listener of subscribers) listener(scan)
+}
+
+function clearAsStale() {
+  publish(null)
+}
+
+function scheduleStaleClear() {
+  if (staleTimer) clearTimeout(staleTimer)
+  staleTimer = setTimeout(clearAsStale, lidarStaleMs)
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return
+
+  const nextAttempt = reconnectAttempt + 1
+  const delayMs = getReconnectDelayMs(nextAttempt)
+  reconnectAttempt = nextAttempt
+
+  debugLog(`reconn ${delayMs}ms #${reconnectAttempt}`)
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    startGrpcLoop()
+  }, delayMs)
+}
+
+function normalizeLidarUpdate(raw: RawLidarUpdate): LidarScan | null {
+  const timestampUnixMs = Number(raw.timestamp_unix_ms)
   if (!Number.isFinite(timestampUnixMs)) return null
 
-  const cpuPercent = Number(update.cpu_percent)
-  if (!Number.isFinite(cpuPercent)) return null
-
-  const seqRaw = update.seq
+  const seqRaw = raw.seq
   const seq =
     typeof seqRaw === 'string'
       ? seqRaw
@@ -153,31 +140,40 @@ function normalizeStatusUpdate(update: RawStatusUpdate): RobotStatus | null {
           ? String(seqRaw)
           : '0'
 
-  const rates: RobotStatus['rates'] = {}
-  const ratesRaw = Array.isArray(update.rates)
-    ? (update.rates as RawRateMetric[])
-    : []
-  for (const metric of ratesRaw) {
-    if (!metric) continue
-    const id = typeof metric.id === 'string' ? metric.id : null
-    if (!id) continue
-    const hz = Number(metric.hz)
-    if (!Number.isFinite(hz)) continue
+  const frameId = typeof raw.frame_id === 'string' ? raw.frame_id : ''
 
-    const targetHz = Number(metric.target_hz)
-    rates[id] = Number.isFinite(targetHz) ? { hz, targetHz } : { hz }
+  const angleMin = Number(raw.angle_min)
+  if (!Number.isFinite(angleMin)) return null
+
+  const angleIncrement = Number(raw.angle_increment)
+  if (!Number.isFinite(angleIncrement)) return null
+
+  const rangeMin = Number(raw.range_min)
+  if (!Number.isFinite(rangeMin)) return null
+
+  const rangeMax = Number(raw.range_max)
+  if (!Number.isFinite(rangeMax)) return null
+
+  const rangesRaw = raw.ranges
+  if (!Array.isArray(rangesRaw)) return null
+
+  const ranges: number[] = []
+  for (const r of rangesRaw) {
+    const n = Number(r)
+    // Keep Inf/NaN as-is (they represent invalid readings per ROS LaserScan)
+    ranges.push(n)
   }
 
-  const voltageV = Number(update.voltage_v)
-  const normalized: RobotStatus = {
+  return {
     timestampUnixMs,
     seq,
-    cpuPercent,
-    rates,
+    frameId,
+    angleMin,
+    angleIncrement,
+    rangeMin,
+    rangeMax,
+    ranges,
   }
-  if (Number.isFinite(voltageV)) normalized.voltageV = voltageV
-
-  return normalized
 }
 
 function startGrpcLoop() {
@@ -215,26 +211,26 @@ function startGrpcLoop() {
     ) as any
     activeClient = client as grpc.Client
 
-    const call = client.GetStatus({})
+    const call = client.StreamLidar({})
     activeCall = call
     gotDataSinceConnect = false
 
-    call.on('data', (raw: RawStatusUpdate) => {
+    call.on('data', (raw: RawLidarUpdate) => {
       if (!gotDataSinceConnect) {
         gotDataSinceConnect = true
         reconnectAttempt = 0
       }
-      const normalized = normalizeStatusUpdate(raw)
+      const normalized = normalizeLidarUpdate(raw)
       if (!normalized) return
-      debugLog(
-        `status seq=${normalized.seq} cpu=${normalized.cpuPercent.toFixed(1)} rates=${Object.keys(normalized.rates).length}`,
-      )
+
+      debugLog(`seq=${normalized.seq} points=${normalized.ranges.length} ranges_bytes=${normalized.ranges.length * 4}`)
+
       publish(normalized)
       scheduleStaleClear()
     })
 
     const onDisconnect = (err?: unknown) => {
-      if (err) debugError('disc', err)
+      if (err) errorLog('disc', err)
       else debugLog('end')
 
       activeCall?.removeAllListeners()
@@ -242,13 +238,17 @@ function startGrpcLoop() {
 
       activeClient?.close()
       activeClient = null
+
+      // Clear on disconnect for staleness policy
+      clearAsStale()
+
       scheduleReconnect()
     }
 
     call.on('error', (err: unknown) => onDisconnect(err))
     call.on('end', () => onDisconnect())
   } catch (err) {
-    debugError('start fail', err)
+    errorLog('start fail', err)
     activeCall?.removeAllListeners()
     activeCall = null
     activeClient?.close()

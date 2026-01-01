@@ -65,13 +65,14 @@ sequenceDiagram
 Environment variables (optional):
 - `UI_GATEWAY_GRPC_ADDR` (default: `0.0.0.0:50051`)
 - `UI_GATEWAY_GRPC_RECONNECT_MS` (default: `2000`)
-- `UI_GATEWAY_STATUS_STALE_MS` (default: `7000`)
+- `BRIDGE_STALE_MS` (default: `7000`)
 - `UI_GATEWAY_SSE_RETRY_MS` (default: `2000`)
 
 Debug logging (optional):
 - `DEBUG_MODEL` — enables model/meta/file route info logs
 - `DEBUG_STATUS` — enables status stream info logs
 - `DEBUG_POSE` — enables pose/state stream info logs
+- `DEBUG_LIDAR` — enables lidar stream info logs
 
 Viewer debug (optional):
 - `VITE_THREE_AXES_DEBUG` — shows world + robot axes helpers in the 3D view

@@ -114,6 +114,7 @@ flowchart TB
 |-----|----------|------------|
 | `src/server/robotStatusHub.ts` | `GetStatus` | `/api/status`, `/api/status/stream` |
 | `src/server/robotStateHub.ts` | `StreamRobotState` | `/api/state`, `/api/state/stream` |
+| `src/server/lidarHub.ts` | `StreamLidar` | `/api/lidar`, `/api/lidar/stream` |
 | `src/server/robotModelCache.ts` | `GetRobotModelMeta`, `GetRobotModel` | `/api/model/meta`, `/api/model/$file` |
 
 ### API routes
@@ -123,6 +124,8 @@ flowchart TB
 | `src/routes/api.status.stream.ts` | `GET /api/status/stream` (SSE) |
 | `src/routes/api.state.ts` | `GET /api/state` |
 | `src/routes/api.state.stream.ts` | `GET /api/state/stream` (SSE) |
+| `src/routes/api.lidar.ts` | `GET /api/lidar` |
+| `src/routes/api.lidar.stream.ts` | `GET /api/lidar/stream` (SSE) |
 | `src/routes/api.model.meta.ts` | `GET /api/model/meta` |
 | `src/routes/api.model.$file.ts` | `GET /api/model/:file` (GLB binary) |
 
@@ -131,6 +134,7 @@ flowchart TB
 |------|--------|----------|
 | `useRobotStatus()` | `src/lib/robotStatusClient.tsx` | `/api/status/stream` |
 | `useRobotState()` | `src/lib/robotStateClient.tsx` | `/api/state/stream` |
+| `useLidarScan()` | `src/lib/lidarClient.tsx` | `/api/lidar/stream` |
 | `ensureRobotModelReady()` | `src/lib/robotModelClient.ts` | `/api/model/meta` + GLB |
 
 ### 3D viewer (Three.js)
@@ -146,6 +150,7 @@ Current rendering stack: Three.js + `@react-three/fiber` + `@react-three/drei`. 
 |------|----------|
 | `src/lib/robotStatus.ts` | `RobotStatus` type, defaults, gauge constants |
 | `src/lib/robotState.ts` | `RobotState` type (pose, wheel angles) |
+| `src/lib/lidarScan.ts` | `LidarScan` type (ranges, angles) |
 
 ### Config
 | File | Purpose |
@@ -158,11 +163,12 @@ Current rendering stack: Three.js + `@react-three/fiber` + `@react-three/drei`. 
 |----------|---------|---------|
 | `UI_GATEWAY_GRPC_ADDR` | `127.0.0.1:50051` | gRPC server address |
 | `UI_GATEWAY_GRPC_RECONNECT_MS` | `2000` | Reconnect delay after disconnect |
-| `UI_GATEWAY_STATUS_STALE_MS` | `7000` | Staleness timeout for status stream |
+| `BRIDGE_STALE_MS` | `7000` | Staleness timeout for streams (status, lidar, etc.) |
 | `UI_GATEWAY_SSE_RETRY_MS` | `2000` | SSE retry hint to browser |
 | `MODEL_META` | — | Absolute path to `*.meta.json` for local model loading |
 | `DEBUG_STATUS` | — | Enable status stream logs |
 | `DEBUG_POSE` | — | Enable pose/state stream logs |
+| `DEBUG_LIDAR` | — | Enable lidar stream logs |
 | `DEBUG_MODEL` | — | Enable model route logs |
 | `VITE_THREE_AXES_DEBUG` | — | Show axes helpers in 3D view |
 

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { RobotStatus } from './robotStatus'
-import { DEFAULT_STATUS_STALE_MS } from './robotStatus'
+import { DEFAULT_BRIDGE_STALE_MS } from './robotStatus'
 
 type RobotStatusContextValue = {
   status: RobotStatus | null
@@ -31,7 +31,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
       if (!next) return
       staleTimeoutRef.current = window.setTimeout(() => {
         setStatus(null)
-      }, DEFAULT_STATUS_STALE_MS)
+      }, DEFAULT_BRIDGE_STALE_MS)
     }
 
     fetch('/api/status')

@@ -1,6 +1,6 @@
 export const DEFAULT_GRPC_ADDR = '127.0.0.1:50051'
 export const DEFAULT_GRPC_RECONNECT_MS = 2000
-export const DEFAULT_STATUS_STALE_MS = 7000
+export const DEFAULT_BRIDGE_STALE_MS = 7000
 
 export const VOLTAGE_MIN_V = 9
 export const VOLTAGE_MAX_V = 13
