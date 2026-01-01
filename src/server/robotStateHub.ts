@@ -82,6 +82,15 @@ let reconnectTimer: NodeJS.Timeout | null = null
 let activeClient: grpc.Client | null = null
 let activeCall: grpc.ClientReadableStream<unknown> | null = null
 
+let reconnectAttempt = 0
+let gotDataSinceConnect = false
+
+function getReconnectDelayMs(attempt: number): number {
+  if (attempt <= 5) return grpcReconnectMs
+  if (attempt <= 10) return 60_000
+  return 300_000
+}
+
 export function getRobotStateSnapshot(): RobotState | null {
   ensureStarted()
   return latestState
@@ -107,10 +116,16 @@ function publish(state: RobotState | null) {
 
 function scheduleReconnect() {
   if (reconnectTimer) return
+
+  const nextAttempt = reconnectAttempt + 1
+  const delayMs = getReconnectDelayMs(nextAttempt)
+  reconnectAttempt = nextAttempt
+
+  poseLog(`reconn ${delayMs}ms #${reconnectAttempt}`)
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
     startGrpcLoop()
-  }, grpcReconnectMs)
+  }, delayMs)
 }
 
 function yawFromQuaternionZUp(qx: number, qy: number, qz: number, qw: number): number {
@@ -258,8 +273,13 @@ function startGrpcLoop() {
 
     const call = client.StreamRobotState({})
     activeCall = call
+    gotDataSinceConnect = false
 
     call.on('data', (msg: RawRobotStateUpdate) => {
+      if (!gotDataSinceConnect) {
+        gotDataSinceConnect = true
+        reconnectAttempt = 0
+      }
       const normalized = normalizeRobotStateUpdate(msg)
       if (!normalized) return
 
@@ -273,7 +293,7 @@ function startGrpcLoop() {
     })
 
     const onDisconnect = (err?: unknown) => {
-      if (err) errorLog('disconnected', err)
+      if (err) errorLog('disc', err)
       activeCall?.removeAllListeners()
       activeCall = null
 
@@ -286,7 +306,7 @@ function startGrpcLoop() {
     call.on('error', (err: unknown) => onDisconnect(err))
     call.on('end', () => onDisconnect())
   } catch (err) {
-    errorLog('failed to start grpc loop', err)
+    errorLog('start fail', err)
     activeCall?.removeAllListeners()
     activeCall = null
     activeClient?.close()

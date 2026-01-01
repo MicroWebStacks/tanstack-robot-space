@@ -64,6 +64,15 @@ let reconnectTimer: NodeJS.Timeout | null = null
 let activeClient: grpc.Client | null = null
 let activeCall: grpc.ClientReadableStream<unknown> | null = null
 
+let reconnectAttempt = 0
+let gotDataSinceConnect = false
+
+function getReconnectDelayMs(attempt: number): number {
+  if (attempt <= 5) return grpcReconnectMs
+  if (attempt <= 10) return 60_000
+  return 300_000
+}
+
 export function getRobotStatusSnapshot(): RobotStatus | null {
   ensureStarted()
   return latestStatus
@@ -100,10 +109,16 @@ function scheduleStaleClear() {
 
 function scheduleReconnect() {
   if (reconnectTimer) return
+
+  const nextAttempt = reconnectAttempt + 1
+  const delayMs = getReconnectDelayMs(nextAttempt)
+  reconnectAttempt = nextAttempt
+
+  debugLog(`reconn ${delayMs}ms #${reconnectAttempt}`)
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
     startGrpcLoop()
-  }, grpcReconnectMs)
+  }, delayMs)
 }
 
 function resolveProtoPath() {
@@ -202,8 +217,13 @@ function startGrpcLoop() {
 
     const call = client.GetStatus({})
     activeCall = call
+    gotDataSinceConnect = false
 
     call.on('data', (raw: RawStatusUpdate) => {
+      if (!gotDataSinceConnect) {
+        gotDataSinceConnect = true
+        reconnectAttempt = 0
+      }
       const normalized = normalizeStatusUpdate(raw)
       if (!normalized) return
       debugLog(
@@ -214,8 +234,8 @@ function startGrpcLoop() {
     })
 
     const onDisconnect = (err?: unknown) => {
-      if (err) debugError('disconnected', err)
-      else debugLog('stream ended')
+      if (err) debugError('disc', err)
+      else debugLog('end')
 
       activeCall?.removeAllListeners()
       activeCall = null
@@ -228,7 +248,7 @@ function startGrpcLoop() {
     call.on('error', (err: unknown) => onDisconnect(err))
     call.on('end', () => onDisconnect())
   } catch (err) {
-    debugError('failed to start grpc loop', err)
+    debugError('start fail', err)
     activeCall?.removeAllListeners()
     activeCall = null
     activeClient?.close()
