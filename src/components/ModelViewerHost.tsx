@@ -12,6 +12,7 @@ import {
 import type { ModelMetaResponse } from '../lib/robotModelClient'
 import { ensureRobotModelReady, getCachedRobotModelMeta } from '../lib/robotModelClient'
 import { LidarScanProvider } from '../lib/lidarClient'
+import { OccupancyMapProvider } from '../lib/occupancyMapClient'
 
 const ModelViewerCanvas = lazy(() => import('./ModelViewerCanvas'))
 
@@ -147,7 +148,9 @@ export default function ModelViewerHost() {
       >
         {isModelRoute ? (
           <LidarScanProvider>
-            <ModelViewerCanvas active={isModelRoute} modelUrl={modelUrl} />
+            <OccupancyMapProvider>
+              <ModelViewerCanvas active={isModelRoute} modelUrl={modelUrl} />
+            </OccupancyMapProvider>
           </LidarScanProvider>
         ) : null}
       </Suspense>

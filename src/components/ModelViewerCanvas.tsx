@@ -1,8 +1,10 @@
 import { Line, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
+import * as THREE from 'three'
 
 import { useLidarScan } from '../lib/lidarClient'
+import { useOccupancyMap } from '../lib/occupancyMapClient'
 import { useRobotState } from '../lib/robotStateClient'
 
 type RobotModelProps = {
@@ -61,6 +63,7 @@ function RobotModel({ url, wheelAnglesRad }: RobotModelProps) {
 function Scene({ modelUrl }: { modelUrl: string | null }) {
   const { state } = useRobotState()
   const { scan } = useLidarScan()
+  const { map } = useOccupancyMap()
 
   const showAxes =
     import.meta.env.VITE_THREE_AXES_DEBUG === '1' ||
@@ -264,6 +267,112 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
   const LIDAR_WALL_COLOR = '#ff0000'
   const LIDAR_WALL_OPACITY = 0.22
+
+  const MAP_Z_OFFSET = 0.0005
+
+  const mapTexture = useMemo(() => {
+    const tex = new THREE.Texture()
+    tex.colorSpace = THREE.NoColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    return tex
+  }, [])
+
+  const mapMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      uniforms: {
+        uMap: { value: mapTexture },
+        uOpacity: { value: 0.9 },
+        uUnknownBand: { value: 0.02 },
+        uUnknownAlpha: { value: 0.18 },
+        uOccColor: { value: new THREE.Color('#0f172a') },
+        uUnknownColor: { value: new THREE.Color('#0f172a') },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          // Hardcoded orientation fix: flip V (ROS occupancy grid PNG row order).
+          vUv = vec2(uv.x, 1.0 - uv.y);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        uniform sampler2D uMap;
+        uniform float uOpacity;
+        uniform float uUnknownBand;
+        uniform float uUnknownAlpha;
+        uniform vec3 uOccColor;
+        uniform vec3 uUnknownColor;
+        varying vec2 vUv;
+        void main() {
+          float g = texture2D(uMap, vUv).r;
+          float occ = 1.0 - g;
+          float d = abs(g - 0.5);
+          float isUnknown = 1.0 - step(uUnknownBand, d);
+          float alpha = mix(occ * uOpacity, uUnknownAlpha * uOpacity, isUnknown);
+          vec3 color = mix(uOccColor, uUnknownColor, isUnknown);
+          gl_FragColor = vec4(color, alpha);
+        }
+      `,
+    })
+  }, [mapTexture])
+
+  useEffect(() => {
+    return () => {
+      mapMaterial.dispose()
+      mapTexture.dispose()
+    }
+  }, [mapMaterial, mapTexture])
+
+  useEffect(() => {
+    if (!map?.pngBase64) return
+
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      mapTexture.image = img
+      mapTexture.needsUpdate = true
+    }
+    img.onerror = () => {}
+    img.src = `data:image/png;base64,${map.pngBase64}`
+
+    return () => {
+      cancelled = true
+    }
+  }, [map?.seq, map?.pngBase64, mapTexture])
+
+  const mapPlane = useMemo(() => {
+    if (!map) return null
+
+    const widthM = map.width * map.resolutionMPerPx
+    const heightM = map.height * map.resolutionMPerPx
+    if (!Number.isFinite(widthM) || !Number.isFinite(heightM) || widthM <= 0 || heightM <= 0) {
+      return null
+    }
+
+    const dx = widthM / 2
+    const dy = heightM / 2
+    const yaw = map.origin.yawZ
+    const cos = Math.cos(yaw)
+    const sin = Math.sin(yaw)
+
+    const centerX = map.origin.x + dx * cos - dy * sin
+    const centerY = map.origin.y + dx * sin + dy * cos
+
+    return {
+      widthM,
+      heightM,
+      pos: [centerX, centerY, map.origin.z + MAP_Z_OFFSET] as [number, number, number],
+      rot: [0, 0, yaw] as [number, number, number],
+    }
+  }, [map])
 
   const lidarGeo = useMemo(() => {
     if (!scan) return null
@@ -580,6 +689,14 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0, 0.001]}
       />
+
+      {/* Occupancy grid map (XY plane) */}
+      {mapPlane ? (
+        <mesh position={mapPlane.pos} rotation={mapPlane.rot}>
+          <planeGeometry args={[mapPlane.widthM, mapPlane.heightM]} />
+          <primitive object={mapMaterial} attach="material" dispose={null} />
+        </mesh>
+      ) : null}
 
       {/* Floor-projected Lidar (world z=0) */}
       {lidarGeo ? (
