@@ -38,6 +38,7 @@ export function RobotStateProvider({ children }: { children: React.ReactNode }) 
 
     es.addEventListener('state', onState as EventListener)
     es.addEventListener('clear', onClear)
+    es.addEventListener('error', onClear)
 
     return () => {
       cancelled = true

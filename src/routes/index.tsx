@@ -174,6 +174,7 @@ function RobotDashboard() {
 
   const fields = status?.fields ?? []
   const values = status?.values ?? {}
+  const hasAnyValue = Object.values(values).some((v) => v != null)
 
   const targetFields = fields.filter((f) => f.target != null)
   const gaugeFields = fields.filter(
@@ -243,8 +244,8 @@ function RobotDashboard() {
           ))}
         </div>
         <div className="mt-4 text-center text-xs text-slate-500">
-          {status
-            ? `seq ${status.seq}${status.fixedFrame ? ` · ${status.fixedFrame}` : ''}`
+          {status && hasAnyValue
+            ? `seq ${status.seq}${status.stack ? ` · ${status.stack}` : ''}`
             : 'No data'}
         </div>
       </div>

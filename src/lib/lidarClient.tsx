@@ -53,6 +53,7 @@ export function LidarScanProvider({ children }: { children: React.ReactNode }) {
 
     es.addEventListener('scan', onScan as EventListener)
     es.addEventListener('clear', onClear)
+    es.addEventListener('error', onClear)
 
     return () => {
       cancelled = true

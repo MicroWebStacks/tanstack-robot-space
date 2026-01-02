@@ -16,6 +16,29 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
     let cancelled = false
     let es: EventSource | null = null
 
+    const clearValues = () => {
+      setStatus((prev) => {
+        if (cancelled) return prev
+        const fields =
+          prev?.fields?.length ? prev.fields : cachedFieldsRef.current
+        if (!fields?.length) return null
+
+        const values: Record<string, number | null> = {}
+        for (const field of fields) values[field.id] = null
+
+        return {
+          stamp: prev?.stamp ?? { sec: 0, nanosec: 0 },
+          seq: prev?.seq ?? '0',
+          wallTimeUnixMs: null,
+          fields,
+          values,
+          currentLaunchRef: null,
+          stack: null,
+          fixedFrame: null,
+        }
+      })
+    }
+
     const applySnapshot = (next: UiStatusSnapshot | null) => {
       if (cancelled) return
       setStatus(next)
@@ -59,10 +82,11 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
         }
       }
 
-      const onClear = () => applySnapshot(null)
+      const onClear = () => clearValues()
 
       es.addEventListener('status', onStatus as EventListener)
       es.addEventListener('clear', onClear)
+      es.addEventListener('error', () => clearValues())
     }
 
     start().catch(() => {})
