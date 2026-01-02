@@ -1,14 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 import { useRobotStatus } from '../lib/robotStatusClient'
-import {
-  DRIVER_TARGET_HZ,
-  LIDAR_TARGET_HZ,
-  ODOM_TARGET_HZ,
-  SLAM_TARGET_HZ,
-  VOLTAGE_MAX_V,
-  VOLTAGE_MIN_V,
-} from '../lib/robotStatus'
+import type { UiStatusFieldMeta } from '../lib/robotStatus'
 
 export const Route = createFileRoute('/')({ component: RobotDashboard })
 
@@ -16,10 +9,42 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-function formatHz(value: number) {
-  if (Number.isNaN(value)) return '--'
-  if (Number.isFinite(value) && Math.abs(value) < 100) return value.toFixed(0)
+function formatNumber(value: number) {
+  if (!Number.isFinite(value)) return '--'
+  if (Math.abs(value) < 10) return value.toFixed(1)
+  if (Math.abs(value) < 100) return value.toFixed(0)
   return Math.round(value).toString()
+}
+
+function formatNumberWithUnit(value: number, unit: string) {
+  const suffix = unit ? unit : ''
+  return `${formatNumber(value)}${suffix}`
+}
+
+function formatValueText(value: number | null, unit: string) {
+  if (value == null) return '--'
+  if (unit === '%') return `${Math.round(value)}%`
+  return formatNumberWithUnit(value, unit)
+}
+
+function labelFromId(id: string) {
+  if (id === 'cpu_percent') return 'CPU'
+  if (id === 'battery_voltage_v') return 'Voltage'
+
+  let label = id
+  label = label.replace(/^hz_/, '')
+  label = label.replace(/_percent$/, '')
+  label = label.replace(/_v$/, '')
+  label = label.replace(/_/g, ' ')
+  return label.replace(/\b\w/g, (ch) => ch.toUpperCase())
+}
+
+function gaugeColorClass(meta: UiStatusFieldMeta) {
+  const id = meta.id
+  if (id.includes('cpu')) return 'stroke-amber-400'
+  if (id.includes('volt')) return 'stroke-emerald-500'
+  if (meta.unit === 'Hz') return 'stroke-sky-400'
+  return 'stroke-indigo-400'
 }
 
 function RingGauge({
@@ -92,13 +117,17 @@ function RateBar({
   label,
   hz,
   targetHz,
+  unit,
 }: {
   label: string
   hz: number | null
   targetHz: number
+  unit: string
 }) {
   const valueText =
-    hz == null ? `--/${formatHz(targetHz)}Hz` : `${formatHz(hz)}/${formatHz(targetHz)}Hz`
+    hz == null
+      ? `--/${formatNumberWithUnit(targetHz, unit)}`
+      : `${formatNumberWithUnit(hz, unit)}/${formatNumberWithUnit(targetHz, unit)}`
   const percent =
     hz == null ? 0 : clampNumber((hz / targetHz) * 100, 0, 100)
 
@@ -118,29 +147,41 @@ function RateBar({
   )
 }
 
+function ValueTile({
+  label,
+  valueText,
+  unit,
+}: {
+  label: string
+  valueText: string
+  unit: string
+}) {
+  return (
+    <div className="rounded-xl bg-slate-900/70 border border-slate-700 p-4 shadow-lg shadow-black/30">
+      <div className="text-sm text-slate-200">{label}</div>
+      <div className="mt-3 text-3xl font-medium text-slate-100 tabular-nums">
+        {valueText}
+        {valueText !== '--' && unit && !valueText.endsWith(unit) ? (
+          <span className="ml-1 text-lg text-slate-300">{unit}</span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function RobotDashboard() {
   const { status } = useRobotStatus()
 
-  const cpuPercent = status?.cpuPercent ?? null
-  const cpuFraction =
-    cpuPercent == null ? null : clampNumber(cpuPercent / 100, 0, 1)
-  const cpuText = cpuPercent == null ? '--' : `${Math.round(cpuPercent)}%`
+  const fields = status?.fields ?? []
+  const values = status?.values ?? {}
 
-  const voltageV = status?.voltageV ?? null
-  const voltageFraction =
-    voltageV == null
-      ? null
-      : clampNumber(
-          (voltageV - VOLTAGE_MIN_V) / (VOLTAGE_MAX_V - VOLTAGE_MIN_V),
-          0,
-          1,
-        )
-  const voltageText = voltageV == null ? '--' : `${voltageV.toFixed(1)}V`
-
-  const driverHz = status?.rates?.hz_driver?.hz ?? null
-  const odomHz = status?.rates?.hz_odom?.hz ?? null
-  const lidarHz = status?.rates?.hz_lidar?.hz ?? null
-  const slamHz = status?.rates?.hz_slam?.hz ?? null
+  const targetFields = fields.filter((f) => f.target != null)
+  const gaugeFields = fields.filter(
+    (f) => f.target == null && f.min != null && f.max != null,
+  )
+  const otherFields = fields.filter(
+    (f) => f.target == null && (f.min == null || f.max == null),
+  )
 
   return (
     <div
@@ -153,34 +194,58 @@ function RobotDashboard() {
     >
       <div className="mx-auto w-full max-w-sm">
         <div className="grid grid-cols-2 gap-3">
-          <RingGauge
-            label="Voltage"
-            valueText={voltageText}
-            fraction={voltageFraction}
-            minLabel={`${VOLTAGE_MIN_V}V`}
-            maxLabel={`${VOLTAGE_MAX_V}V`}
-            colorClass="stroke-emerald-500"
-          />
-          <RingGauge
-            label="CPU"
-            valueText={cpuText}
-            fraction={cpuFraction}
-            minLabel="0%"
-            maxLabel="100%"
-            colorClass="stroke-amber-400"
-          />
-          <div className="col-span-2 rounded-xl bg-slate-900/70 border border-slate-700 p-4 shadow-lg shadow-black/30">
-            <div className="text-sm text-slate-200">Pipeline Hz</div>
-            <div className="mt-4 space-y-5">
-              <RateBar label="driver" hz={driverHz} targetHz={DRIVER_TARGET_HZ} />
-              <RateBar label="odom" hz={odomHz} targetHz={ODOM_TARGET_HZ} />
-              <RateBar label="lidar" hz={lidarHz} targetHz={LIDAR_TARGET_HZ} />
-              <RateBar label="slam" hz={slamHz} targetHz={SLAM_TARGET_HZ} />
+          {gaugeFields.map((meta) => {
+            const value = values[meta.id] ?? null
+            const min = meta.min ?? 0
+            const max = meta.max ?? 1
+            const fraction =
+              value == null || meta.min == null || meta.max == null || max === min
+                ? null
+                : clampNumber((value - min) / (max - min), 0, 1)
+
+            return (
+              <RingGauge
+                key={meta.id}
+                label={labelFromId(meta.id)}
+                valueText={formatValueText(value, meta.unit)}
+                fraction={fraction}
+                minLabel={formatNumberWithUnit(min, meta.unit)}
+                maxLabel={formatNumberWithUnit(max, meta.unit)}
+                colorClass={gaugeColorClass(meta)}
+              />
+            )
+          })}
+
+          {targetFields.length ? (
+            <div className="col-span-2 rounded-xl bg-slate-900/70 border border-slate-700 p-4 shadow-lg shadow-black/30">
+              <div className="text-sm text-slate-200">Targets</div>
+              <div className="mt-4 space-y-5">
+                {targetFields.map((meta) => (
+                  <RateBar
+                    key={meta.id}
+                    label={labelFromId(meta.id)}
+                    hz={values[meta.id] ?? null}
+                    targetHz={meta.target ?? 0}
+                    unit={meta.unit}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
+
+          {otherFields.map((meta) => (
+            <ValueTile
+              key={meta.id}
+              label={labelFromId(meta.id)}
+              valueText={formatValueText(values[meta.id] ?? null, meta.unit)}
+              unit={meta.unit}
+            />
+          ))}
         </div>
         <div className="mt-4 text-center text-xs text-slate-500">
-          {status ? `seq ${status.seq}` : 'No data'}
+          {status
+            ? `seq ${status.seq}${status.fixedFrame ? ` · ${status.fixedFrame}` : ''}`
+            : 'No data'}
         </div>
       </div>
     </div>

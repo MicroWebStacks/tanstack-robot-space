@@ -1,0 +1,12 @@
+# Web UI config (subset of ros_ui_bridge status field ids).
+#
+# IDs must match those configured in the gRPC server (ros_ui_bridge),
+# e.g. https://github.com/Roblibs/rovi_ros_ws/blob/main/src/ros_ui_bridge/config/default.yaml
+status:
+  selected_ids:
+    - cpu_percent
+    - battery_voltage_v
+    - hz_driver
+    - hz_odom
+    - hz_lidar
+    - hz_slam

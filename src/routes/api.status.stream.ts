@@ -28,26 +28,51 @@ export const Route = createFileRoute('/api/status/stream')({
 
         const encoder = new TextEncoder()
 
-        const { subscribeRobotStatus } = await import('../server/robotStatusHub')
+        const { normalizeUiStatusUpdate, openUiStatusStream } = await import(
+          '../server/uiStatusBridge'
+        )
+
+        const { call, close, selectedIds } = openUiStatusStream()
 
         let keepAliveTimer: NodeJS.Timeout | null = null
-        let unsubscribe: (() => void) | null = null
+        let cancelled = false
 
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             controller.enqueue(encoder.encode(`retry: ${retryMs}\n\n`))
 
-            unsubscribe = subscribeRobotStatus((status) => {
+            call.on('data', (raw) => {
               try {
+                const update = normalizeUiStatusUpdate(raw, selectedIds)
                 controller.enqueue(
                   encoder.encode(
-                    status ? sseEvent('status', status) : sseEvent('clear'),
+                    sseEvent('status', update),
                   ),
                 )
               } catch {
                 // Connection likely closed; cancel() will run cleanup.
               }
             })
+
+            const onDisconnect = () => {
+              if (cancelled) return
+              if (keepAliveTimer) clearInterval(keepAliveTimer)
+              keepAliveTimer = null
+              close()
+              try {
+                controller.enqueue(encoder.encode(sseEvent('clear')))
+              } catch {
+                // ignore
+              }
+              try {
+                controller.close()
+              } catch {
+                // ignore
+              }
+            }
+
+            call.on('error', onDisconnect)
+            call.on('end', onDisconnect)
 
             keepAliveTimer = setInterval(() => {
               try {
@@ -59,10 +84,10 @@ export const Route = createFileRoute('/api/status/stream')({
           },
 
           cancel() {
+            cancelled = true
             if (keepAliveTimer) clearInterval(keepAliveTimer)
             keepAliveTimer = null
-            unsubscribe?.()
-            unsubscribe = null
+            close()
           },
         })
 

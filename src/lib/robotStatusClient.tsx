@@ -1,63 +1,76 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { RobotStatus } from './robotStatus'
-import { DEFAULT_BRIDGE_STALE_MS } from './robotStatus'
+import type { UiStatusFieldMeta, UiStatusSnapshot, UiStatusUpdate } from './robotStatus'
 
 type RobotStatusContextValue = {
-  status: RobotStatus | null
+  status: UiStatusSnapshot | null
 }
 
 const RobotStatusContext = createContext<RobotStatusContextValue | null>(null)
 
 export function RobotStatusProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<RobotStatus | null>(null)
-  const staleTimeoutRef = useRef<number | null>(null)
+  const [status, setStatus] = useState<UiStatusSnapshot | null>(null)
+  const cachedFieldsRef = useRef<UiStatusFieldMeta[] | null>(null)
 
   useEffect(() => {
     let cancelled = false
+    let es: EventSource | null = null
 
-    const clearStaleTimeout = () => {
-      if (staleTimeoutRef.current == null) return
-      window.clearTimeout(staleTimeoutRef.current)
-      staleTimeoutRef.current = null
+    const applySnapshot = (next: UiStatusSnapshot | null) => {
+      if (cancelled) return
+      setStatus(next)
+      if (next?.fields?.length) cachedFieldsRef.current = next.fields
     }
 
-    const applyStatus = (next: RobotStatus | null) => {
+    const start = async () => {
+      try {
+        const res = await fetch('/api/status', { cache: 'no-store' })
+        const data = (await res.json()) as { status: UiStatusSnapshot | null }
+        applySnapshot(data.status ?? null)
+      } catch {
+        applySnapshot(null)
+      }
+
       if (cancelled) return
 
-      clearStaleTimeout()
-      setStatus(next)
+      es = new EventSource('/api/status/stream')
 
-      if (!next) return
-      staleTimeoutRef.current = window.setTimeout(() => {
-        setStatus(null)
-      }, DEFAULT_BRIDGE_STALE_MS)
-    }
-
-    fetch('/api/status')
-      .then((res) => res.json() as Promise<{ status: RobotStatus | null }>)
-      .then((data) => applyStatus(data.status ?? null))
-      .catch(() => {})
-
-    const es = new EventSource('/api/status/stream')
-
-    const onStatus = (event: MessageEvent<string>) => {
-      try {
-        applyStatus(JSON.parse(event.data) as RobotStatus)
-      } catch {
-        // ignore malformed frames
+      const onStatus = (event: MessageEvent<string>) => {
+        try {
+          const update = JSON.parse(event.data) as UiStatusUpdate
+          const fields = cachedFieldsRef.current
+          setStatus((prev) => {
+            if (cancelled) return prev
+            if (prev?.fields?.length) return { ...update, fields: prev.fields }
+            if (fields?.length) return { ...update, fields }
+            const fallbackFields: UiStatusFieldMeta[] = Object.keys(update.values ?? {}).map(
+              (id) => ({
+                id,
+                unit: '',
+                min: null,
+                max: null,
+                target: null,
+              }),
+            )
+            return { ...update, fields: fallbackFields }
+          })
+        } catch {
+          // ignore malformed frames
+        }
       }
+
+      const onClear = () => applySnapshot(null)
+
+      es.addEventListener('status', onStatus as EventListener)
+      es.addEventListener('clear', onClear)
     }
 
-    const onClear = () => applyStatus(null)
-
-    es.addEventListener('status', onStatus as EventListener)
-    es.addEventListener('clear', onClear)
+    start().catch(() => {})
 
     return () => {
       cancelled = true
-      clearStaleTimeout()
-      es.close()
+      es?.close()
+      es = null
     }
   }, [])
 
@@ -77,4 +90,3 @@ export function useRobotStatus(): RobotStatusContextValue {
   }
   return value
 }
-
