@@ -8,7 +8,15 @@ import { nitro } from 'nitro/vite'
 
 const config = defineConfig({
   plugins: [
-    devtools(),
+    devtools({
+      injectSource: {
+        enabled: true,
+        ignore: {
+          // R3F supports dashed props like `position-x`; `data-tsd-source` breaks it.
+          files: [/ModelViewerCanvas\.tsx$/],
+        },
+      },
+    }),
     nitro(),
     // this is the plugin that enables path aliases
     viteTsConfigPaths({
