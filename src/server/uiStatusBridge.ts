@@ -14,7 +14,7 @@ import type {
 import { DEFAULT_GRPC_ADDR, DEFAULT_GRPC_RECONNECT_MS } from '../lib/robotStatus'
 
 import { isEnvTrue, loadRootEnvOnce } from './env'
-import { getUiSelectedStatusIds } from './uiStatusConfig'
+import { getUiStatusConfig } from './uiStatusConfig'
 
 loadRootEnvOnce()
 
@@ -216,6 +216,7 @@ function normalizeContextString(value: unknown): string | null {
 function normalizeSnapshot(
   raw: RawStatusSnapshot,
   selectedIds: string[],
+  labelsById: Record<string, string>,
 ): UiStatusSnapshot {
   const fieldsRaw = Array.isArray(raw.fields) ? (raw.fields as RawStatusFieldMeta[]) : []
   const metaById = new Map<string, UiStatusFieldMeta>()
@@ -227,14 +228,18 @@ function normalizeSnapshot(
 
   const fields: UiStatusFieldMeta[] = selectedIds.map((id) => {
     const meta = metaById.get(id)
+    const label = labelsById[id]
     return (
-      meta ?? {
-        id,
-        unit: '',
-        min: null,
-        max: null,
-        target: null,
-      }
+      meta
+        ? { ...meta, label }
+        : {
+            id,
+            label,
+            unit: '',
+            min: null,
+            max: null,
+            target: null,
+          }
     )
   })
 
@@ -266,8 +271,10 @@ function normalizeUpdate(
 }
 
 export async function fetchUiStatusSnapshot(
-  selectedIds = getUiSelectedStatusIds(),
+  config = getUiStatusConfig(),
 ): Promise<UiStatusSnapshot> {
+  const selectedIds = config.selectedIds
+  const labelsById = config.labelsById
   const client = createUiBridgeClient()
   try {
     const deadline = new Date(Date.now() + grpcDeadlineMs)
@@ -281,7 +288,7 @@ export async function fetchUiStatusSnapshot(
         },
       )
     })
-    const normalized = normalizeSnapshot(raw, selectedIds)
+    const normalized = normalizeSnapshot(raw, selectedIds, labelsById)
     if (debugStatus) {
       const rawValueIds = Array.isArray(raw.values)
         ? Array.from(
@@ -314,12 +321,13 @@ export async function fetchUiStatusSnapshot(
 }
 
 export function openUiStatusStream(
-  selectedIds = getUiSelectedStatusIds(),
+  config = getUiStatusConfig(),
 ): {
   call: grpc.ClientReadableStream<RawStatusUpdate>
   close: () => void
   selectedIds: string[]
 } {
+  const selectedIds = config.selectedIds
   const client = createUiBridgeClient()
   const call = client.StreamStatus({})
 

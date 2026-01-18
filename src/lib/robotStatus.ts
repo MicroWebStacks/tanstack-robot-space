@@ -9,6 +9,7 @@ export type UiTime = {
 
 export type UiStatusFieldMeta = {
   id: string
+  label?: string
   unit: string
   min: number | null
   max: number | null

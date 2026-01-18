@@ -35,12 +35,25 @@ Notes:
 | `DEBUG_LIDAR` | (off) | `src/server/lidarHub.ts` | Enables lidar stream logs. |
 | `DEBUG_MAP` | (off) | `src/server/mapHub.ts` | Enables map stream logs. |
 | `DEBUG_MODEL` | (off) | `src/server/robotModelCache.ts` | Enables model route logs. |
-| `UI_WEB_CONFIG` / `UI_WEB_CONFIG_PATH` / `UI_CONFIG` / `UI_CONFIG_PATH` | `config/ui.yaml` | `src/server/uiStatusConfig.ts` | Path to UI YAML config (selected status ids). |
+| `UI_WEB_CONFIG` / `UI_WEB_CONFIG_PATH` / `UI_CONFIG` / `UI_CONFIG_PATH` | `config/ui.yaml` | `src/server/uiStatusConfig.ts` | Path to UI YAML config (dashboard status fields + labels). |
 | `VITE_THREE_AXES_DEBUG` | (off) | `src/components/ModelViewerCanvas.tsx` | Shows axes helpers in the 3D view. |
 | `VITE_DEBUG_AXES` | (off) | `src/components/ModelViewerCanvas.tsx` | Back-compat alias for `VITE_THREE_AXES_DEBUG`. |
 | `VITE_LIDAR_TS_OFFSET_MS` | `0` | `src/components/ModelViewerCanvas.tsx` | Timestamp offset used to align lidar timestamp with pose history. |
 
 ## Code “Tweak Points”
+
+## UI Config (ui.yaml)
+
+The dashboard field list and labels come from `config/ui.yaml` (or `UI_WEB_CONFIG` / `UI_CONFIG` env overrides).
+
+Required shape:
+
+```yaml
+status:
+  fields:
+    - id: cpu
+      label: CPU
+```
 
 | Location | Setting | Purpose |
 |---|---|---|
@@ -50,6 +63,4 @@ Notes:
 | `src/components/ModelViewerCanvas.tsx` | `LASER_OFFSET`, `LASER_RPY` | Fixed transform from base to laser frame for lidar rendering. |
 | `src/components/ModelViewerCanvas.tsx` | `LIDAR_*` constants | Lidar point size/colors/line break threshold/wall opacity. |
 | `src/components/ModelViewerCanvas.tsx` | `MAP_Z_OFFSET` + shader uniforms (`uOpacity`, `uUnknownAlpha`, `uUnknownBand`, colors) | Map overlay height and occupancy-to-color/alpha mapping. |
-| `src/server/uiStatusConfig.ts` | `DEFAULT_SELECTED_IDS` | Default dashboard status fields if config file is missing. |
 | `src/routes/index.tsx` | Gauge sizing (`size`, `strokeWidth`) + background gradient | Dashboard visual tuning. |
-

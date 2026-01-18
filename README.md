@@ -78,7 +78,7 @@ When no data has arrived yet (or after a `clear` event), the API returns `null`.
 ## Configuration
 
 Environment variables (optional):
-- `UI_GATEWAY_GRPC_ADDR` (default: `0.0.0.0:50051`)
+- `UI_GATEWAY_GRPC_ADDR` (default: `127.0.0.1:50051`)
 - `UI_GATEWAY_GRPC_RECONNECT_MS` (default: `2000`)
 - `BRIDGE_STALE_MS` (default: `7000`)
 - `UI_GATEWAY_SSE_RETRY_MS` (default: `2000`)

@@ -28,13 +28,8 @@ function formatValueText(value: number | null, unit: string) {
 }
 
 function labelFromId(id: string) {
-  if (id === 'cpu_percent') return 'CPU'
-  if (id === 'battery_voltage_v') return 'Voltage'
-
   let label = id
   label = label.replace(/^hz_/, '')
-  label = label.replace(/_percent$/, '')
-  label = label.replace(/_v$/, '')
   label = label.replace(/_/g, ' ')
   return label.replace(/\b\w/g, (ch) => ch.toUpperCase())
 }
@@ -207,7 +202,7 @@ function RobotDashboard() {
             return (
               <RingGauge
                 key={meta.id}
-                label={labelFromId(meta.id)}
+                label={meta.label ?? labelFromId(meta.id)}
                 valueText={formatValueText(value, meta.unit)}
                 fraction={fraction}
                 minLabel={formatNumberWithUnit(min, meta.unit)}
@@ -224,7 +219,7 @@ function RobotDashboard() {
                 {targetFields.map((meta) => (
                   <RateBar
                     key={meta.id}
-                    label={labelFromId(meta.id)}
+                    label={meta.label ?? labelFromId(meta.id)}
                     hz={values[meta.id] ?? null}
                     targetHz={meta.target ?? 0}
                     unit={meta.unit}
@@ -237,7 +232,7 @@ function RobotDashboard() {
           {otherFields.map((meta) => (
             <ValueTile
               key={meta.id}
-              label={labelFromId(meta.id)}
+              label={meta.label ?? labelFromId(meta.id)}
               valueText={formatValueText(values[meta.id] ?? null, meta.unit)}
               unit={meta.unit}
             />

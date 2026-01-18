@@ -20,6 +20,25 @@ export const Route = createFileRoute('/api/status/stream')({
   server: {
     handlers: {
       GET: async () => {
+        let normalizeUiStatusUpdate: typeof import('../server/uiStatusBridge').normalizeUiStatusUpdate
+        let openUiStatusStream: typeof import('../server/uiStatusBridge').openUiStatusStream
+
+        try {
+          ;({ normalizeUiStatusUpdate, openUiStatusStream } = await import(
+            '../server/uiStatusBridge'
+          ))
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : 'Failed to initialize status stream'
+          return new Response(message, {
+            status: 503,
+            headers: {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'no-store',
+            },
+          })
+        }
+
         const retryMs =
           Number(
             process.env.UI_GATEWAY_SSE_RETRY_MS ??
@@ -28,11 +47,23 @@ export const Route = createFileRoute('/api/status/stream')({
 
         const encoder = new TextEncoder()
 
-        const { normalizeUiStatusUpdate, openUiStatusStream } = await import(
-          '../server/uiStatusBridge'
-        )
+        let call: ReturnType<typeof openUiStatusStream>['call']
+        let close: ReturnType<typeof openUiStatusStream>['close']
+        let selectedIds: ReturnType<typeof openUiStatusStream>['selectedIds']
 
-        const { call, close, selectedIds } = openUiStatusStream()
+        try {
+          ;({ call, close, selectedIds } = openUiStatusStream())
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : 'Failed to open status stream'
+          return new Response(message, {
+            status: 503,
+            headers: {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'no-store',
+            },
+          })
+        }
 
         let keepAliveTimer: NodeJS.Timeout | null = null
         let cancelled = false
