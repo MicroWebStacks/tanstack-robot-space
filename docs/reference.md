@@ -53,7 +53,11 @@ status:
   fields:
     - id: cpu
       label: CPU
+      decimals: 0
 ```
+
+Notes:
+- `decimals` is optional; when omitted it defaults to `0` (deterministic formatting; no heuristics).
 
 | Location | Setting | Purpose |
 |---|---|---|

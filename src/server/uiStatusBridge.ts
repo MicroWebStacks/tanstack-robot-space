@@ -217,6 +217,7 @@ function normalizeSnapshot(
   raw: RawStatusSnapshot,
   selectedIds: string[],
   labelsById: Record<string, string>,
+  decimalsById: Record<string, number>,
 ): UiStatusSnapshot {
   const fieldsRaw = Array.isArray(raw.fields) ? (raw.fields as RawStatusFieldMeta[]) : []
   const metaById = new Map<string, UiStatusFieldMeta>()
@@ -229,12 +230,14 @@ function normalizeSnapshot(
   const fields: UiStatusFieldMeta[] = selectedIds.map((id) => {
     const meta = metaById.get(id)
     const label = labelsById[id]
+    const decimals = decimalsById[id]
     return (
       meta
-        ? { ...meta, label }
+        ? { ...meta, label, decimals }
         : {
             id,
             label,
+            decimals,
             unit: '',
             min: null,
             max: null,
@@ -275,6 +278,7 @@ export async function fetchUiStatusSnapshot(
 ): Promise<UiStatusSnapshot> {
   const selectedIds = config.selectedIds
   const labelsById = config.labelsById
+  const decimalsById = config.decimalsById
   const client = createUiBridgeClient()
   try {
     const deadline = new Date(Date.now() + grpcDeadlineMs)
@@ -288,7 +292,7 @@ export async function fetchUiStatusSnapshot(
         },
       )
     })
-    const normalized = normalizeSnapshot(raw, selectedIds, labelsById)
+    const normalized = normalizeSnapshot(raw, selectedIds, labelsById, decimalsById)
     if (debugStatus) {
       const rawValueIds = Array.isArray(raw.values)
         ? Array.from(

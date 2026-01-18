@@ -8,6 +8,7 @@ status:
       label: CPU
     - id: voltage
       label: Voltage
+      decimals: 1
     - id: hz_driver
       label: Driver Hz
     - id: hz_odom

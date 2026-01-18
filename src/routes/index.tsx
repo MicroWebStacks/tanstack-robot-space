@@ -11,20 +11,24 @@ function clampNumber(value: number, min: number, max: number) {
 
 function formatNumber(value: number) {
   if (!Number.isFinite(value)) return '--'
-  if (Math.abs(value) < 10) return value.toFixed(1)
-  if (Math.abs(value) < 100) return value.toFixed(0)
   return Math.round(value).toString()
 }
 
-function formatNumberWithUnit(value: number, unit: string) {
-  const suffix = unit ? unit : ''
-  return `${formatNumber(value)}${suffix}`
+function formatNumberWithDecimals(value: number, decimals: number) {
+  if (!Number.isFinite(value)) return '--'
+  return value.toFixed(decimals)
 }
 
-function formatValueText(value: number | null, unit: string) {
+function formatValueText(
+  value: number | null,
+  unit: string,
+  decimals: number | null,
+) {
   if (value == null) return '--'
   if (unit === '%') return `${Math.round(value)}%`
-  return formatNumberWithUnit(value, unit)
+  const suffix = unit ? unit : ''
+  if (decimals != null) return `${formatNumberWithDecimals(value, decimals)}${suffix}`
+  return `${formatNumber(value)}${suffix}`
 }
 
 function labelFromId(id: string) {
@@ -121,8 +125,8 @@ function RateBar({
 }) {
   const valueText =
     hz == null
-      ? `--/${formatNumberWithUnit(targetHz, unit)}`
-      : `${formatNumberWithUnit(hz, unit)}/${formatNumberWithUnit(targetHz, unit)}`
+      ? `--/${formatNumberWithDecimals(targetHz, 0)}${unit}`
+      : `${formatNumberWithDecimals(hz, 0)}${unit}/${formatNumberWithDecimals(targetHz, 0)}${unit}`
   const percent =
     hz == null ? 0 : clampNumber((hz / targetHz) * 100, 0, 100)
 
@@ -203,10 +207,10 @@ function RobotDashboard() {
               <RingGauge
                 key={meta.id}
                 label={meta.label ?? labelFromId(meta.id)}
-                valueText={formatValueText(value, meta.unit)}
+                valueText={formatValueText(value, meta.unit, meta.decimals ?? 0)}
                 fraction={fraction}
-                minLabel={formatNumberWithUnit(min, meta.unit)}
-                maxLabel={formatNumberWithUnit(max, meta.unit)}
+                minLabel={formatValueText(min, meta.unit, meta.decimals ?? 0)}
+                maxLabel={formatValueText(max, meta.unit, meta.decimals ?? 0)}
                 colorClass={gaugeColorClass(meta)}
               />
             )
@@ -233,7 +237,7 @@ function RobotDashboard() {
             <ValueTile
               key={meta.id}
               label={meta.label ?? labelFromId(meta.id)}
-              valueText={formatValueText(values[meta.id] ?? null, meta.unit)}
+              valueText={formatValueText(values[meta.id] ?? null, meta.unit, meta.decimals ?? 0)}
               unit={meta.unit}
             />
           ))}

@@ -6,12 +6,14 @@ import { loadRootEnvOnce } from './env'
 export type UiStatusFieldConfig = {
   id: string
   label: string
+  decimals?: number
 }
 
 export type UiStatusConfig = {
   fields: UiStatusFieldConfig[]
   selectedIds: string[]
   labelsById: Record<string, string>
+  decimalsById: Record<string, number>
 }
 
 function stripInlineComment(line: string): string {
@@ -43,18 +45,21 @@ function parseYamlStatusFields(yaml: string): UiStatusFieldConfig[] {
   let activeItemIndent: number | null = null
   let activeId: string | null = null
   let activeLabel: string | null = null
+  let activeDecimals: number | null = null
 
   const flushActive = () => {
-    if (!activeId && !activeLabel) return
+    if (!activeId && !activeLabel && activeDecimals == null) return
     if (!activeId) {
       throw new Error('Invalid config: status.fields item missing id')
     }
     if (!activeLabel) {
       throw new Error(`Invalid config: status.fields.${activeId} missing label`)
     }
-    out.push({ id: activeId, label: activeLabel })
+    const decimals = activeDecimals == null ? undefined : activeDecimals
+    out.push({ id: activeId, label: activeLabel, decimals })
     activeId = null
     activeLabel = null
+    activeDecimals = null
     activeItemIndent = null
   }
 
@@ -119,6 +124,20 @@ function parseYamlStatusFields(yaml: string): UiStatusFieldConfig[] {
 
     if (key === 'id') activeId = value || null
     if (key === 'label') activeLabel = value || null
+    if (key === 'decimals') {
+      if (!value) {
+        activeDecimals = null
+      } else {
+        const n = Number(value)
+        if (!Number.isInteger(n) || n < 0) {
+          const suffix = activeId ? `.${activeId}` : ''
+          throw new Error(
+            `Invalid config: status.fields${suffix}.decimals must be a non-negative integer`,
+          )
+        }
+        activeDecimals = n
+      }
+    }
   }
 
   flushActive()
@@ -163,6 +182,7 @@ export function getUiStatusConfig(): UiStatusConfig {
   }
 
   const labelsById: Record<string, string> = {}
+  const decimalsById: Record<string, number> = {}
   const selectedIds: string[] = []
   for (const field of fields) {
     if (!field.id) {
@@ -182,7 +202,8 @@ export function getUiStatusConfig(): UiStatusConfig {
     }
     selectedIds.push(field.id)
     labelsById[field.id] = field.label
+    decimalsById[field.id] = field.decimals ?? 0
   }
 
-  return { fields, selectedIds, labelsById }
+  return { fields, selectedIds, labelsById, decimalsById }
 }
