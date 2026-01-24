@@ -1,11 +1,51 @@
 import { Line, OrbitControls, useGLTF } from '@react-three/drei'
-import { Canvas } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 
 import { useLidarScan } from '../lib/lidarClient'
 import { useOccupancyMap } from '../lib/occupancyMapClient'
 import { useRobotState } from '../lib/robotStateClient'
+
+type OrbitSnapshot = {
+  position: [number, number, number]
+  target: [number, number, number]
+}
+
+let lastOrbitSnapshot: OrbitSnapshot | null = null
+
+function PersistedOrbitControls({ enabled }: { enabled: boolean }) {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const camera = useThree((state) => state.camera)
+
+  useLayoutEffect(() => {
+    const snapshot = lastOrbitSnapshot
+    if (!snapshot) return
+
+    camera.position.set(...snapshot.position)
+
+    const controls = controlsRef.current
+    if (!controls) return
+
+    controls.target.set(...snapshot.target)
+    controls.update()
+  }, [camera])
+
+  useEffect(() => {
+    return () => {
+      const controls = controlsRef.current
+      if (!controls) return
+
+      lastOrbitSnapshot = {
+        position: [camera.position.x, camera.position.y, camera.position.z],
+        target: [controls.target.x, controls.target.y, controls.target.z],
+      }
+    }
+  }, [camera])
+
+  return <OrbitControls ref={controlsRef} enabled={enabled} />
+}
 
 type RobotModelProps = {
   url: string
@@ -834,7 +874,7 @@ export default function ModelViewerCanvas({
       style={{ width: '100%', height: '100%' }}
     >
       <Scene modelUrl={modelUrl} />
-      <OrbitControls enabled={active} />
+      <PersistedOrbitControls enabled={active} />
     </Canvas>
   )
 }

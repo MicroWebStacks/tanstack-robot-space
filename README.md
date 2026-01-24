@@ -77,6 +77,8 @@ When no data has arrived yet (or after a `clear` event), the API returns `null`.
 
 ## Configuration
 
+- `MODEL_META` used by `src/server/robotModelCache.ts`: Absolute path to `*.meta.json` for local model loading.
+
 Environment variables (optional):
 - `UI_GATEWAY_GRPC_ADDR` (default: `127.0.0.1:50051`)
 - `UI_GATEWAY_GRPC_RECONNECT_MS` (default: `2000`)
