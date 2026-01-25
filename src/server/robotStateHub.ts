@@ -9,13 +9,14 @@ import type { RobotState } from '../lib/robotState'
 import { DEFAULT_GRPC_ADDR, DEFAULT_GRPC_RECONNECT_MS } from '../lib/robotStatus'
 
 import { isEnvTrue, loadRootEnvOnce } from './env'
+import { getGrpcRetryLogger } from './retryLogger'
 
 loadRootEnvOnce()
 
 const LOG_PREFIX = '[robot-state]'
 
-const debugPose =
-  isEnvTrue('DEBUG_POSE')
+const debugPose = isEnvTrue('DEBUG_POSE')
+const retryLog = getGrpcRetryLogger()
 
 function poseLog(line: string) {
   if (!debugPose) return
@@ -276,6 +277,7 @@ function startGrpcLoop() {
       if (!gotDataSinceConnect) {
         gotDataSinceConnect = true
         reconnectAttempt = 0
+        retryLog.markSuccess()
       }
       const normalized = normalizeRobotStateUpdate(msg)
       if (!normalized) return
@@ -290,7 +292,7 @@ function startGrpcLoop() {
     })
 
     const onDisconnect = (err?: unknown) => {
-      if (err) errorLog('disc', err)
+      if (err) retryLog.logFailure('down', err)
       activeCall?.removeAllListeners()
       activeCall = null
 
@@ -303,7 +305,7 @@ function startGrpcLoop() {
     call.on('error', (err: unknown) => onDisconnect(err))
     call.on('end', () => onDisconnect())
   } catch (err) {
-    errorLog('start fail', err)
+    retryLog.logFailure('down', err)
     activeCall?.removeAllListeners()
     activeCall = null
     activeClient?.close()

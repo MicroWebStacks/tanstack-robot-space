@@ -14,6 +14,7 @@ import type {
 import { DEFAULT_GRPC_ADDR, DEFAULT_GRPC_RECONNECT_MS } from '../lib/robotStatus'
 
 import { isEnvTrue, loadRootEnvOnce } from './env'
+import { getGrpcRetryLogger } from './retryLogger'
 import { getUiStatusConfig } from './uiStatusConfig'
 
 loadRootEnvOnce()
@@ -21,6 +22,7 @@ loadRootEnvOnce()
 const LOG_PREFIX = '[ui-status]'
 
 const debugStatus = isEnvTrue('DEBUG_STATUS')
+const retryLog = getGrpcRetryLogger()
 
 function debugLog(line: string) {
   if (!debugStatus) return
@@ -335,6 +337,8 @@ export function openUiStatusStream(
   const client = createUiBridgeClient()
   const call = client.StreamStatus({})
 
+  let gotData = false
+
   let closed = false
   const close = () => {
     if (closed) return
@@ -351,8 +355,14 @@ export function openUiStatusStream(
     }
   }
 
+  call.on('data', () => {
+    if (gotData) return
+    gotData = true
+    retryLog.markSuccess()
+  })
+
   call.on('error', (err: unknown) => {
-    debugError('stream err', err)
+    retryLog.logFailure('down', err)
     close()
   })
   call.on('end', () => {

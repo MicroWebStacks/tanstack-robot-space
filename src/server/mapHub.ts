@@ -10,12 +10,14 @@ import type { OccupancyMap } from '../lib/occupancyMap'
 import { DEFAULT_BRIDGE_STALE_MS, DEFAULT_GRPC_ADDR, DEFAULT_GRPC_RECONNECT_MS } from '../lib/robotStatus'
 
 import { isEnvTrue, loadRootEnvOnce } from './env'
+import { getGrpcRetryLogger } from './retryLogger'
 
 loadRootEnvOnce()
 
 const LOG_PREFIX = '[map]'
 
 const debugMap = isEnvTrue('DEBUG_MAP')
+const retryLog = getGrpcRetryLogger()
 
 function debugLog(line: string) {
   if (!debugMap) return
@@ -297,6 +299,7 @@ function startGrpcLoop() {
       if (!gotDataSinceConnect) {
         gotDataSinceConnect = true
         reconnectAttempt = 0
+        retryLog.markSuccess()
       }
 
       const normalized = normalizeMapUpdate(raw)
@@ -311,7 +314,7 @@ function startGrpcLoop() {
     })
 
     const onDisconnect = (err?: unknown) => {
-      if (err) errorLog('disc', err)
+      if (err) retryLog.logFailure('down', err)
       else debugLog('end')
 
       activeCall?.removeAllListeners()
@@ -329,7 +332,7 @@ function startGrpcLoop() {
     call.on('error', (err: unknown) => onDisconnect(err))
     call.on('end', () => onDisconnect())
   } catch (err) {
-    errorLog('start fail', err)
+    retryLog.logFailure('down', err)
     activeCall?.removeAllListeners()
     activeCall = null
     activeClient?.close()
@@ -337,4 +340,3 @@ function startGrpcLoop() {
     scheduleReconnect()
   }
 }
-
