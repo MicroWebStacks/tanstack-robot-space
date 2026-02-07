@@ -17,3 +17,7 @@ status:
       label: Lidar Hz
     - id: hz_slam
       label: Slam Hz
+    - id: hz_color
+      label: Color Hz
+    - id: hz_depth
+      label: Depth Hz
