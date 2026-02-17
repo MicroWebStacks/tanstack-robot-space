@@ -11,6 +11,7 @@ import {
 
 import type { ModelMetaResponse } from '../lib/robotModelClient'
 import { ensureRobotModelReady, getCachedRobotModelMeta } from '../lib/robotModelClient'
+import { FloorTopologyProvider } from '../lib/floorTopologyClient'
 import { LidarScanProvider } from '../lib/lidarClient'
 import { OccupancyMapProvider } from '../lib/occupancyMapClient'
 
@@ -149,7 +150,9 @@ export default function ModelViewerHost() {
         {isModelRoute ? (
           <LidarScanProvider>
             <OccupancyMapProvider>
-              <ModelViewerCanvas active={isModelRoute} modelUrl={modelUrl} />
+              <FloorTopologyProvider>
+                <ModelViewerCanvas active={isModelRoute} modelUrl={modelUrl} />
+              </FloorTopologyProvider>
             </OccupancyMapProvider>
           </LidarScanProvider>
         ) : null}

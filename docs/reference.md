@@ -12,6 +12,8 @@
 | `/api/lidar/stream` | GET | SSE | Streams lidar scans (`event: scan`, `event: clear`). |
 | `/api/map` | GET | JSON | Returns latest occupancy map (`map`) from `StreamMap`. |
 | `/api/map/stream` | GET | SSE | Streams occupancy map updates (`event: map`, `event: clear`). |
+| `/api/floor-topology` | GET | JSON | Returns latest floor topology (`topology`) from `StreamFloorTopology`. |
+| `/api/floor-topology/stream` | GET | SSE | Streams floor topology updates (`event: topology`, `event: clear`). |
 | `/api/model/meta` | GET | JSON | Returns local model metadata + resolved URL (`url`) for the GLB. |
 | `/api/model/:file` | GET | Binary | Serves the GLB (`model/gltf-binary`), supports HTTP range requests. |
 
@@ -26,14 +28,16 @@ Notes:
 | `UI_GATEWAY_GRPC_ADDR` | `127.0.0.1:50051` | `src/server/*` hubs | gRPC UiBridge address. |
 | `UI_GATEWAY_GRPC_RECONNECT_MS` | `2000` | `src/server/lidarHub.ts`, `src/server/robotStateHub.ts`, `src/server/mapHub.ts` | Base reconnect delay (early attempts). |
 | `UI_GATEWAY_GRPC_DEADLINE_MS` | `2000` | `src/server/uiStatusBridge.ts` | Deadline for `GetStatus` snapshot call. |
-| `BRIDGE_STALE_MS` | `7000` | `src/server/lidarHub.ts` | Stale timeout for lidar stream (server clears to null). |
+| `BRIDGE_STALE_MS` | `7000` | `src/server/lidarHub.ts`, `src/server/floorTopologyHub.ts` | Stale timeout for streams (server clears to null). |
 | `BRIDGE_STALE_MAP_MS` | `BRIDGE_STALE_MS` | `src/server/mapHub.ts` | Stale timeout for map stream (server clears to null). |
+| `BRIDGE_STALE_TOPOLOGY_MS` | `BRIDGE_STALE_MS` | `src/server/floorTopologyHub.ts` | Stale timeout for floor topology stream (server clears to null). |
 | `UI_GATEWAY_SSE_RETRY_MS` | `UI_GATEWAY_GRPC_RECONNECT_MS` | `src/routes/api.*.stream.ts` | SSE reconnect hint (`retry:` line) sent to browsers. |
 | `MODEL_META` | (required) | `src/server/robotModelCache.ts` | Absolute path to `*.meta.json` for local model loading. |
 | `DEBUG_STATUS` | (off) | `src/server/uiStatusBridge.ts` | Enables status stream logs. |
 | `DEBUG_POSE` | (off) | `src/server/robotStateHub.ts` | Enables robot state stream logs. |
 | `DEBUG_LIDAR` | (off) | `src/server/lidarHub.ts` | Enables lidar stream logs. |
 | `DEBUG_MAP` | (off) | `src/server/mapHub.ts` | Enables map stream logs. |
+| `DEBUG_TOPOLOGY` | (off) | `src/server/floorTopologyHub.ts`, `src/routes/api.floor-topology*.ts` | Enables floor topology hub + SSE route logs. |
 | `DEBUG_MODEL` | (off) | `src/server/robotModelCache.ts` | Enables model route logs. |
 | `UI_WEB_CONFIG` / `UI_WEB_CONFIG_PATH` / `UI_CONFIG` / `UI_CONFIG_PATH` | `config/ui.yaml` | `src/server/uiStatusConfig.ts` | Path to UI YAML config (dashboard status fields + labels). |
 | `VITE_THREE_AXES_DEBUG` | (off) | `src/components/ModelViewerCanvas.tsx` | Shows axes helpers in the 3D view. |

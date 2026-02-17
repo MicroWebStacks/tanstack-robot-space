@@ -15,12 +15,14 @@ import { Route as ApiStatusRouteImport } from './routes/api.status'
 import { Route as ApiStateRouteImport } from './routes/api.state'
 import { Route as ApiMapRouteImport } from './routes/api.map'
 import { Route as ApiLidarRouteImport } from './routes/api.lidar'
+import { Route as ApiFloorTopologyRouteImport } from './routes/api.floor-topology'
 import { Route as ApiStatusStreamRouteImport } from './routes/api.status.stream'
 import { Route as ApiStateStreamRouteImport } from './routes/api.state.stream'
 import { Route as ApiModelMetaRouteImport } from './routes/api.model.meta'
 import { Route as ApiModelFileRouteImport } from './routes/api.model.$file'
 import { Route as ApiMapStreamRouteImport } from './routes/api.map.stream'
 import { Route as ApiLidarStreamRouteImport } from './routes/api.lidar.stream'
+import { Route as ApiFloorTopologyStreamRouteImport } from './routes/api.floor-topology.stream'
 
 const ModelRoute = ModelRouteImport.update({
   id: '/model',
@@ -50,6 +52,11 @@ const ApiMapRoute = ApiMapRouteImport.update({
 const ApiLidarRoute = ApiLidarRouteImport.update({
   id: '/api/lidar',
   path: '/api/lidar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFloorTopologyRoute = ApiFloorTopologyRouteImport.update({
+  id: '/api/floor-topology',
+  path: '/api/floor-topology',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiStatusStreamRoute = ApiStatusStreamRouteImport.update({
@@ -82,14 +89,21 @@ const ApiLidarStreamRoute = ApiLidarStreamRouteImport.update({
   path: '/stream',
   getParentRoute: () => ApiLidarRoute,
 } as any)
+const ApiFloorTopologyStreamRoute = ApiFloorTopologyStreamRouteImport.update({
+  id: '/stream',
+  path: '/stream',
+  getParentRoute: () => ApiFloorTopologyRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/model': typeof ModelRoute
+  '/api/floor-topology': typeof ApiFloorTopologyRouteWithChildren
   '/api/lidar': typeof ApiLidarRouteWithChildren
   '/api/map': typeof ApiMapRouteWithChildren
   '/api/state': typeof ApiStateRouteWithChildren
   '/api/status': typeof ApiStatusRouteWithChildren
+  '/api/floor-topology/stream': typeof ApiFloorTopologyStreamRoute
   '/api/lidar/stream': typeof ApiLidarStreamRoute
   '/api/map/stream': typeof ApiMapStreamRoute
   '/api/model/$file': typeof ApiModelFileRoute
@@ -100,10 +114,12 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/model': typeof ModelRoute
+  '/api/floor-topology': typeof ApiFloorTopologyRouteWithChildren
   '/api/lidar': typeof ApiLidarRouteWithChildren
   '/api/map': typeof ApiMapRouteWithChildren
   '/api/state': typeof ApiStateRouteWithChildren
   '/api/status': typeof ApiStatusRouteWithChildren
+  '/api/floor-topology/stream': typeof ApiFloorTopologyStreamRoute
   '/api/lidar/stream': typeof ApiLidarStreamRoute
   '/api/map/stream': typeof ApiMapStreamRoute
   '/api/model/$file': typeof ApiModelFileRoute
@@ -115,10 +131,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/model': typeof ModelRoute
+  '/api/floor-topology': typeof ApiFloorTopologyRouteWithChildren
   '/api/lidar': typeof ApiLidarRouteWithChildren
   '/api/map': typeof ApiMapRouteWithChildren
   '/api/state': typeof ApiStateRouteWithChildren
   '/api/status': typeof ApiStatusRouteWithChildren
+  '/api/floor-topology/stream': typeof ApiFloorTopologyStreamRoute
   '/api/lidar/stream': typeof ApiLidarStreamRoute
   '/api/map/stream': typeof ApiMapStreamRoute
   '/api/model/$file': typeof ApiModelFileRoute
@@ -131,10 +149,12 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/model'
+    | '/api/floor-topology'
     | '/api/lidar'
     | '/api/map'
     | '/api/state'
     | '/api/status'
+    | '/api/floor-topology/stream'
     | '/api/lidar/stream'
     | '/api/map/stream'
     | '/api/model/$file'
@@ -145,10 +165,12 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/model'
+    | '/api/floor-topology'
     | '/api/lidar'
     | '/api/map'
     | '/api/state'
     | '/api/status'
+    | '/api/floor-topology/stream'
     | '/api/lidar/stream'
     | '/api/map/stream'
     | '/api/model/$file'
@@ -159,10 +181,12 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/model'
+    | '/api/floor-topology'
     | '/api/lidar'
     | '/api/map'
     | '/api/state'
     | '/api/status'
+    | '/api/floor-topology/stream'
     | '/api/lidar/stream'
     | '/api/map/stream'
     | '/api/model/$file'
@@ -174,6 +198,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ModelRoute: typeof ModelRoute
+  ApiFloorTopologyRoute: typeof ApiFloorTopologyRouteWithChildren
   ApiLidarRoute: typeof ApiLidarRouteWithChildren
   ApiMapRoute: typeof ApiMapRouteWithChildren
   ApiStateRoute: typeof ApiStateRouteWithChildren
@@ -226,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLidarRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/floor-topology': {
+      id: '/api/floor-topology'
+      path: '/api/floor-topology'
+      fullPath: '/api/floor-topology'
+      preLoaderRoute: typeof ApiFloorTopologyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/status/stream': {
       id: '/api/status/stream'
       path: '/stream'
@@ -268,8 +300,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLidarStreamRouteImport
       parentRoute: typeof ApiLidarRoute
     }
+    '/api/floor-topology/stream': {
+      id: '/api/floor-topology/stream'
+      path: '/stream'
+      fullPath: '/api/floor-topology/stream'
+      preLoaderRoute: typeof ApiFloorTopologyStreamRouteImport
+      parentRoute: typeof ApiFloorTopologyRoute
+    }
   }
 }
+
+interface ApiFloorTopologyRouteChildren {
+  ApiFloorTopologyStreamRoute: typeof ApiFloorTopologyStreamRoute
+}
+
+const ApiFloorTopologyRouteChildren: ApiFloorTopologyRouteChildren = {
+  ApiFloorTopologyStreamRoute: ApiFloorTopologyStreamRoute,
+}
+
+const ApiFloorTopologyRouteWithChildren =
+  ApiFloorTopologyRoute._addFileChildren(ApiFloorTopologyRouteChildren)
 
 interface ApiLidarRouteChildren {
   ApiLidarStreamRoute: typeof ApiLidarStreamRoute
@@ -321,6 +371,7 @@ const ApiStatusRouteWithChildren = ApiStatusRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ModelRoute: ModelRoute,
+  ApiFloorTopologyRoute: ApiFloorTopologyRouteWithChildren,
   ApiLidarRoute: ApiLidarRouteWithChildren,
   ApiMapRoute: ApiMapRouteWithChildren,
   ApiStateRoute: ApiStateRouteWithChildren,

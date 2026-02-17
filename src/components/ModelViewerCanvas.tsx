@@ -4,6 +4,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 
+import { useFloorTopology } from '../lib/floorTopologyClient'
 import { useLidarScan } from '../lib/lidarClient'
 import { useOccupancyMap } from '../lib/occupancyMapClient'
 import { useRobotState } from '../lib/robotStateClient'
@@ -104,6 +105,7 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
   const { state } = useRobotState()
   const { scan } = useLidarScan()
   const { map } = useOccupancyMap()
+  const { topology } = useFloorTopology()
 
   const showAxes =
     import.meta.env.VITE_THREE_AXES_DEBUG === '1' ||
@@ -307,6 +309,9 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
 
   const LIDAR_WALL_COLOR = '#ff0000'
   const LIDAR_WALL_OPACITY = 0.22
+
+  const TOPOLOGY_LINE_COLOR = '#22c55e'
+  const TOPOLOGY_LINE_WIDTH = 2
 
   const MAP_Z_OFFSET = 0.0005
 
@@ -704,6 +709,36 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
     }
   }, [scan, poseForScan?.x, poseForScan?.y, poseForScan?.z, poseForScan?.yawZ])
 
+  const topologyLines = useMemo(() => {
+    if (!topology) return null
+
+    const EXPECTED_FRAME_ID = 'base_footprint'
+
+    const out: { key: string; points: [number, number, number][] }[] = []
+    for (const poly of topology.polylines) {
+      if (poly.frameId !== EXPECTED_FRAME_ID) {
+        throw new Error(
+          `[topology] unexpected frameId="${poly.frameId}" (expected "${EXPECTED_FRAME_ID}")`,
+        )
+      }
+
+      if (poly.points.length < 2) continue
+
+      const pts: [number, number, number][] = poly.points.map((p) => [
+        p.x,
+        p.y,
+        p.z,
+      ])
+
+      if (poly.closed) pts.push(pts[0])
+
+      const ns = poly.ns || 'polyline'
+      out.push({ key: `${ns}:${poly.id}`, points: pts })
+    }
+
+    return out.length ? out : null
+  }, [topology?.seq])
+
   return (
     <>
       <color attach="background" args={['#87cefa']} />
@@ -825,6 +860,21 @@ function Scene({ modelUrl }: { modelUrl: string | null }) {
             </mesh>
           ) : null}
         </>
+      ) : null}
+
+      {/* Floor topology (robot-attached; base_footprint frame) */}
+      {topologyLines && poseFromState ? (
+        <group position={modelPos} rotation={modelRot}>
+          {topologyLines.map((line) => (
+            <Line
+              key={line.key}
+              points={line.points}
+              color={TOPOLOGY_LINE_COLOR}
+              lineWidth={TOPOLOGY_LINE_WIDTH}
+              depthWrite={false}
+            />
+          ))}
+        </group>
       ) : null}
 
       {modelUrl ? (
